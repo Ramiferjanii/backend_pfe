@@ -1,4 +1,5 @@
 const nodemailer = require('nodemailer');
+const { Parser } = require('json2csv');
 
 const transporter = nodemailer.createTransport({
   service: 'gmail', // easiest for testing, can be changed to SMTP
@@ -12,13 +13,16 @@ const transporter = nodemailer.createTransport({
  * Sends an email notification when scraping is complete.
  * @param {string} toEmail - Recipient email address
  * @param {string} websiteUrl - The URL that was scraped
- * @param {number} itemCount - Number of items found/saved
+ * @param {Array<Object> | number} items - Items array or count of items
  */
-async function sendScrapingNotification(toEmail, websiteUrl, itemCount) {
+async function sendScrapingNotification(toEmail, websiteUrl, items) {
   if (!toEmail) {
     console.warn("No email address provided for notification.");
     return;
   }
+
+  const isArray = Array.isArray(items);
+  const itemCount = isArray ? items.length : items;
 
   // If credentials are not set, log a warning but don't crash
   if (!process.env.EMAIL_USER || !process.env.EMAIL_PASS) {
@@ -40,7 +44,25 @@ async function sendScrapingNotification(toEmail, websiteUrl, itemCount) {
         <a href="http://localhost:3000/dashboard" style="background-color: #4F46E5; color: white; padding: 10px 20px; text-decoration: none; border-radius: 5px;">View Dashboard</a>
       </div>
     `,
+    attachments: []
   };
+
+  // Generate CSV Attachment if items data is provided
+  if (isArray && items.length > 0) {
+      try {
+          const fields = ['name', 'price', 'reference', 'category', 'url', 'image'];
+          const json2csvParser = new Parser({ fields });
+          const csv = json2csvParser.parse(items);
+          
+          mailOptions.attachments.push({
+              filename: 'scraping_results.csv',
+              content: csv,
+              contentType: 'text/csv'
+          });
+      } catch (err) {
+          console.error('Failed to generate CSV attachment for email:', err);
+      }
+  }
 
   try {
     await transporter.sendMail(mailOptions);

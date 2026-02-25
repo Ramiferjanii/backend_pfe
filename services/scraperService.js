@@ -200,7 +200,7 @@ async function scrapeWebsiteTask(websiteId, mode = 'static', url, filters = {}, 
                         // 2. Send Email
                         if (user && user.email) {
                             console.log(`Sending email notification to ${user.email}...`);
-                            await sendScrapingNotification(user.email, url, items.length);
+                            await sendScrapingNotification(user.email, url, items);
                         }
                     } catch (notifyErr) {
                          console.error("Failed to process notifications:", notifyErr);

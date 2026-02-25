@@ -4,10 +4,46 @@ const { PrismaClient } = require('@prisma/client');
 const prisma = new PrismaClient();
 const auth = require('../middleware/auth');
 
+const { Parser } = require('json2csv');
+
 // Helper to format Prisma product to API format (if needed, but Prisma returns objects already)
 const formatProduct = (product) => ({
     ...product,
     priceAmount: product.priceAmount ? parseFloat(product.priceAmount) : 0,
+});
+
+// GET: Export products for a website as CSV (Protected)
+router.get('/export/:websiteId', auth, async (req, res) => {
+    try {
+        const websiteId = req.params.websiteId;
+        
+        // Fetch products for user and website
+        const products = await prisma.product.findMany({
+            where: {
+                websiteId: websiteId,
+                userId: req.user.id
+            },
+            orderBy: { createdAt: 'desc' }
+        });
+
+        if (!products || products.length === 0) {
+            return res.status(404).json({ error: 'No products found to export' });
+        }
+
+        // Convert to CSV
+        const fields = ['name', 'price', 'reference', 'category', 'url', 'domain', 'image', 'createdAt'];
+        const json2csvParser = new Parser({ fields });
+        const csv = json2csvParser.parse(products);
+
+        // Send as file download
+        res.setHeader('Content-Type', 'text/csv');
+        res.setHeader('Content-Disposition', `attachment; filename=products_export_${websiteId}.csv`);
+        res.status(200).send(csv);
+
+    } catch (error) {
+        console.error('--- EXPORT ERROR ---', error.message);
+        res.status(500).json({ error: "Export Error", details: error.message });
+    }
 });
 
 // GET: List products with filtering (Protected)

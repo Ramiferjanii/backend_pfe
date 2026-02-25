@@ -33,6 +33,7 @@ app.use('/api/auth', authRoutes);
 app.use('/api/profile', require('./routes/profile'));
 app.use('/api/websites', websiteRoutes);
 app.use('/api/products', productRoutes);
+app.use('/api/notifications', require('./routes/notifications'));
 
 // API Info endpoint
 app.get('/', (req, res) => {
