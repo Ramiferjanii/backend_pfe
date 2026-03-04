@@ -8,15 +8,15 @@ datasource db {
 }
 
 model User {
-  id        String    @id @default(uuid())
-  email     String    @unique
-  name      String?
-  image     String?   // User profile picture URL
-  password  String?
-  createdAt DateTime  @default(now())
-  products  Product[]
-  websites      Website[]
+  id            String         @id @default(uuid())
+  email         String         @unique
+  name          String?
+  image         String?
+  password      String?
+  createdAt     DateTime       @default(now())
   notifications Notification[]
+  products      Product[]
+  websites      Website[]
 }
 
 model Website {
@@ -25,16 +25,17 @@ model Website {
   url             String    @unique
   description     String?
   category        String    @default("general")
-  scrapeFrequency String    @default("on-demand") // daily, weekly, monthly, on-demand
+  scrapeFrequency String    @default("on-demand")
   isActive        Boolean   @default(true)
   lastScraped     DateTime?
   scrapedData     Json?
   metadata        Json?
   createdAt       DateTime  @default(now())
   updatedAt       DateTime  @updatedAt
-  products        Product[]
   userId          String?
+  products        Product[]
   user            User?     @relation(fields: [userId], references: [id])
+
   @@index([userId])
 }
 
@@ -50,27 +51,51 @@ model Product {
   image       String?
   domain      String?
   websiteId   String
-  website     Website   @relation(fields: [websiteId], references: [id])
   userId      String?
-  user        User?     @relation(fields: [userId], references: [id])
   scrapedAt   DateTime?
   createdAt   DateTime  @default(now())
   updatedAt   DateTime  @updatedAt
+  user        User?     @relation(fields: [userId], references: [id])
+  website     Website   @relation(fields: [websiteId], references: [id])
+  reviews     Review[]
 
   @@index([priceAmount])
   @@index([category])
   @@index([userId])
 }
 
+model Review {
+  id               String   @id @default(uuid())
+  productId        String
+  asin             String?  // Amazon ASIN
+  title            String?
+  body             String
+  author           String?
+  rating           Float?
+  reviewDate       String?
+  verified         Boolean  @default(false)
+  sentiment        String   // positive | neutral | negative
+  compound         Float    // VADER compound score (-1 to +1)
+  sentimentPos     Float?
+  sentimentNeu     Float?
+  sentimentNeg     Float?
+  createdAt        DateTime @default(now())
+  product          Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  @@index([productId])
+  @@index([sentiment])
+  @@index([asin])
+}
+
 model Notification {
   id        String   @id @default(uuid())
   userId    String
-  user      User     @relation(fields: [userId], references: [id])
   title     String
   message   String
   isRead    Boolean  @default(false)
-  type      String   @default("info") // info, success, warning, error
+  type      String   @default("info")
   createdAt DateTime @default(now())
+  user      User     @relation(fields: [userId], references: [id])
 
   @@index([userId])
 }

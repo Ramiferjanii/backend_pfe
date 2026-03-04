@@ -1,7 +1,6 @@
 const express = require('express');
 const router = express.Router();
-const { PrismaClient } = require('@prisma/client');
-const prisma = new PrismaClient();
+const prisma = require('../lib/prisma');
 const auth = require('../middleware/auth');
 
 // GET: List all notifications for user
@@ -18,7 +17,7 @@ router.get('/', auth, async (req, res) => {
             take: pLimit,
             skip: skip
         });
-        
+
         const unreadCount = await prisma.notification.count({
             where: { userId: req.user.id, isRead: false }
         });
@@ -37,7 +36,7 @@ router.get('/', auth, async (req, res) => {
 router.put('/:id/read', auth, async (req, res) => {
     try {
         const notificationId = req.params.id;
-        
+
         const notification = await prisma.notification.findUnique({
             where: { id: notificationId }
         });

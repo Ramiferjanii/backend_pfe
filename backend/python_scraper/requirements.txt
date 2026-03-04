@@ -1,7 +1,0 @@
-requests
-beautifulsoup4
-selenium
-webdriver-manager
-supabase
-python-dotenv
-vaderSentiment

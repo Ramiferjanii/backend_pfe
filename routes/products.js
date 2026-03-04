@@ -1,7 +1,6 @@
 const express = require('express');
 const router = express.Router();
-const { PrismaClient } = require('@prisma/client');
-const prisma = new PrismaClient();
+const prisma = require('../lib/prisma');
 const auth = require('../middleware/auth');
 
 const { Parser } = require('json2csv');
@@ -16,7 +15,7 @@ const formatProduct = (product) => ({
 router.get('/export/:websiteId', auth, async (req, res) => {
     try {
         const websiteId = req.params.websiteId;
-        
+
         // Fetch products for user and website
         const products = await prisma.product.findMany({
             where: {
@@ -49,15 +48,15 @@ router.get('/export/:websiteId', auth, async (req, res) => {
 // GET: List products with filtering (Protected)
 router.get('/', auth, async (req, res) => {
     try {
-        const { 
-            minPrice, 
-            maxPrice, 
-            name, 
-            category, 
-            websiteId, 
+        const {
+            minPrice,
+            maxPrice,
+            name,
+            category,
+            websiteId,
             domain,
-            page, 
-            limit 
+            page,
+            limit
         } = req.query;
 
         // Ensure we have numbers for pagination
@@ -129,9 +128,9 @@ router.get('/', auth, async (req, res) => {
     } catch (error) {
         console.error('--- PRISMA QUERY ERROR ---');
         console.error('Message:', error.message);
-        res.status(500).json({ 
-            error: "Database Error", 
-            details: error.message 
+        res.status(500).json({
+            error: "Database Error",
+            details: error.message
         });
     }
 });
@@ -146,7 +145,7 @@ router.get('/:id', auth, async (req, res) => {
         if (!product) {
             return res.status(404).json({ error: 'Product not found' });
         }
-        
+
         // Ownership check
         if (product.userId && product.userId !== req.user.id) {
             return res.status(403).json({ error: 'Access denied' });

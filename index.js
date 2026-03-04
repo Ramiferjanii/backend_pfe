@@ -9,6 +9,7 @@ const cors = require('cors');
 const authRoutes = require('./routes/auth.js');
 const websiteRoutes = require('./routes/websites.js');
 const productRoutes = require('./routes/products.js');
+const reviewRoutes = require('./routes/reviews.js');
 const port = 5003;
 
 // Middleware
@@ -33,6 +34,7 @@ app.use('/api/auth', authRoutes);
 app.use('/api/profile', require('./routes/profile'));
 app.use('/api/websites', websiteRoutes);
 app.use('/api/products', productRoutes);
+app.use('/api/reviews', reviewRoutes);
 app.use('/api/notifications', require('./routes/notifications'));
 
 // API Info endpoint
@@ -60,6 +62,13 @@ app.get('/', (req, res) => {
                 getById: 'GET /api/products/:id',
                 query: 'GET /api/products?q=...&category=...&domain=...',
                 share: 'POST /api/products/:id/share { "type": "whatsapp", "destination": "+216..." }'
+            },
+            reviews: {
+                fetchOne: 'POST /api/reviews/fetch/:productId',
+                fetchBatch: 'POST /api/reviews/fetch-batch',
+                list: 'GET  /api/reviews/:productId',
+                summary: 'GET  /api/reviews/:productId/summary',
+                delete: 'DELETE /api/reviews/:productId'
             }
         }
     });

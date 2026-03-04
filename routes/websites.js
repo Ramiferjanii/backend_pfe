@@ -1,7 +1,6 @@
 const express = require('express');
 const router = express.Router();
-const { PrismaClient } = require('@prisma/client');
-const prisma = new PrismaClient();
+const prisma = require('../lib/prisma');
 const { scrapeWebsiteTask } = require('../services/scraperService');
 const auth = require('../middleware/auth');
 
@@ -27,7 +26,7 @@ const formatWebsite = (site) => ({
 router.get('/', auth, async (req, res) => {
     try {
         const { category, isActive, page, limit } = req.query;
-        
+
         const pLimit = parseInt(limit) || 10;
         const pPage = parseInt(page) || 1;
         const skip = (pPage - 1) * pLimit;
@@ -73,9 +72,9 @@ router.get('/:id', auth, async (req, res) => {
         const website = await prisma.website.findUnique({
             where: { id: req.params.id }
         });
-        
+
         if (!website) return res.status(404).json({ error: 'Website not found' });
-        
+
         // Check ownership
         if (website.userId && website.userId !== req.user.id) {
             return res.status(403).json({ error: 'Access denied' });
@@ -138,14 +137,14 @@ router.put('/:id', auth, async (req, res) => {
         const existing = await prisma.website.findUnique({
             where: { id: req.params.id }
         });
-        
+
         if (!existing) return res.status(404).json({ error: 'Website not found' });
         if (existing.userId && existing.userId !== req.user.id) {
             return res.status(403).json({ error: 'Access denied' });
         }
 
         const { name, url, description, category, scrapeFrequency, isActive } = req.body;
-        
+
         const updatedWebsite = await prisma.website.update({
             where: { id: req.params.id },
             data: {

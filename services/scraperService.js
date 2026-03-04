@@ -1,7 +1,6 @@
 const { spawn } = require('child_process');
 const path = require('path');
-const { PrismaClient } = require('@prisma/client');
-const prisma = new PrismaClient();
+const prisma = require('../lib/prisma');
 
 /**
  * Scrapes a website using the Python scraper script.
@@ -11,8 +10,8 @@ const prisma = new PrismaClient();
  */
 async function scrapeWebsiteTask(websiteId, mode = 'static', url, filters = {}, userId = null) {
     if (!url) {
-       console.error(`ERROR: URL is missing for website task: ID=${websiteId}`);
-       throw new Error("URL is required for scraping");
+        console.error(`ERROR: URL is missing for website task: ID=${websiteId}`);
+        throw new Error("URL is required for scraping");
     }
     console.log(`Starting scrapeWebsiteTask for ID: ${websiteId}, Mode: ${mode}, URL: ${url}`);
 
@@ -37,13 +36,13 @@ async function scrapeWebsiteTask(websiteId, mode = 'static', url, filters = {}, 
 
         // Build arguments with filters
         const args = [scriptPath, websiteId, mode, url || ''];
-        
+
         // Add filter arguments if provided
         if (filters?.minPrice) args.push('--minPrice', String(filters.minPrice));
         if (filters?.maxPrice) args.push('--maxPrice', String(filters.maxPrice));
         if (filters?.name) args.push('--nameFilter', String(filters.name));
         if (filters?.reference) args.push('--referenceFilter', String(filters.reference));
-        
+
         console.log(`Python args:`, args);
         const pythonProcess = spawn(pythonPath, args);
 
@@ -67,7 +66,7 @@ async function scrapeWebsiteTask(websiteId, mode = 'static', url, filters = {}, 
 
         pythonProcess.on('close', async (code) => {
             console.log(`Python process for ${websiteId} exited with code ${code}`);
-            
+
             if (code !== 0) {
                 console.error(`Python stderr for ${websiteId}: ${errorOutput}`);
                 return reject(new Error(`Python process exited with code ${code}. Error: ${errorOutput}`));
@@ -98,7 +97,7 @@ async function scrapeWebsiteTask(websiteId, mode = 'static', url, filters = {}, 
                 }
 
                 const data = result.data || result; // Handle {success: true, data: ...} or just data
-                
+
                 // Extract items
                 let items = [];
                 if (data.type === 'list' && Array.isArray(data.data)) {
@@ -108,12 +107,12 @@ async function scrapeWebsiteTask(websiteId, mode = 'static', url, filters = {}, 
                 } else {
                     items = [data];
                 }
-                
+
                 // Add count to the data for website summary
                 if (data.type === 'list') {
                     data.count = items.length;
                 }
-                
+
                 console.log(`[SCRAPER] ${websiteId}: Found ${items.length} items to save.`);
 
                 // 2. Update Website Document using Prisma (Success)
@@ -132,10 +131,10 @@ async function scrapeWebsiteTask(websiteId, mode = 'static', url, filters = {}, 
                     try {
                         let itemUrl = item.url || url;
                         if (!itemUrl || typeof itemUrl !== 'string') continue;
-                        
+
                         // Manual upsert logic
                         const existingProduct = await prisma.product.findFirst({
-                            where: { 
+                            where: {
                                 url: itemUrl,
                                 userId: userId || undefined
                             }
@@ -145,14 +144,14 @@ async function scrapeWebsiteTask(websiteId, mode = 'static', url, filters = {}, 
                         const productData = {
                             name: item.name || 'Unknown',
                             price: item.price || 'Not found',
-                            priceAmount: parseFloat(item.priceAmount || 0.0), 
+                            priceAmount: parseFloat(item.priceAmount || 0.0),
                             reference: item.reference || '',
                             overview: item.overview || '',
                             category: item.category || '',
                             image: item.image || '',
                             websiteId: websiteId,
                             scrapedAt: now,
-                            userId: userId, 
+                            userId: userId,
                             domain: item.domain || data.domain
                         };
 
@@ -176,7 +175,7 @@ async function scrapeWebsiteTask(websiteId, mode = 'static', url, filters = {}, 
                 }
 
                 console.log(`[SCRAPER] ${websiteId}: Successfully saved ${savedCount} products to database.`);
-                
+
                 // --- Notification & Email System ---
                 if (userId) {
                     try {
@@ -185,7 +184,7 @@ async function scrapeWebsiteTask(websiteId, mode = 'static', url, filters = {}, 
                             where: { id: userId },
                             select: { email: true }
                         });
-                        
+
                         // 1. Create In-App Notification
                         await prisma.notification.create({
                             data: {
@@ -203,7 +202,7 @@ async function scrapeWebsiteTask(websiteId, mode = 'static', url, filters = {}, 
                             await sendScrapingNotification(user.email, url, items);
                         }
                     } catch (notifyErr) {
-                         console.error("Failed to process notifications:", notifyErr);
+                        console.error("Failed to process notifications:", notifyErr);
                     }
                 }
                 // --- End Notification System ---

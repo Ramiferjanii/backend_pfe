@@ -1,13 +1,12 @@
 const express = require('express');
 const router = express.Router();
 const { supabase } = require('../services/supabaseService');
-const { PrismaClient } = require('@prisma/client');
-const prisma = new PrismaClient();
+const prisma = require('../lib/prisma');
 
 // Sync User from Supabase Auth to Public User Table
 router.post('/sync-user', async (req, res) => {
     const { id, email, name, full_name, image } = req.body;
-    
+
     if (!id || !email) {
         return res.status(400).json({ error: "Missing required fields" });
     }
@@ -15,7 +14,7 @@ router.post('/sync-user', async (req, res) => {
     try {
         // Check if user exists by email first (to handle email conflicts)
         let existingUser = await prisma.user.findUnique({ where: { email } });
-        
+
         if (!existingUser) {
             // Then check by ID
             existingUser = await prisma.user.findUnique({ where: { id } });
