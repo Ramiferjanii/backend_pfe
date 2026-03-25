@@ -135,6 +135,22 @@ router.get('/', auth, async (req, res) => {
     }
 });
 
+// GET: Use Groq AI to analyze if the product's price is a good deal
+router.get('/:id/deal-analysis', auth, async (req, res) => {
+    try {
+        const product = await prisma.product.findUnique({ where: { id: req.params.id } });
+        if (!product) return res.status(404).json({ error: 'Product not found' });
+        if (product.userId && product.userId !== req.user.id) return res.status(403).json({ error: 'Access denied' });
+
+        const { analyzeDeal } = require('../services/aiService');
+        const dealAnalysis = await analyzeDeal(req.params.id);
+        res.json({ success: true, analysis: dealAnalysis });
+    } catch (error) {
+        console.error('Deal analysis error:', error);
+        res.status(500).json({ error: 'Failed to analyze deal', details: error.message });
+    }
+});
+
 // GET: Get single product by ID (Protected)
 router.get('/:id', auth, async (req, res) => {
     try {

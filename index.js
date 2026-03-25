@@ -10,6 +10,7 @@ const authRoutes = require('./routes/auth.js');
 const websiteRoutes = require('./routes/websites.js');
 const productRoutes = require('./routes/products.js');
 const reviewRoutes = require('./routes/reviews.js');
+const dashboardRoutes = require('./routes/dashboard.js');
 const port = 5003;
 
 // Middleware
@@ -35,7 +36,10 @@ app.use('/api/profile', require('./routes/profile'));
 app.use('/api/websites', websiteRoutes);
 app.use('/api/products', productRoutes);
 app.use('/api/reviews', reviewRoutes);
+app.use('/api/chat', require('./routes/chat'));
 app.use('/api/notifications', require('./routes/notifications'));
+app.use('/api/dashboard', dashboardRoutes);
+app.use('/api/reports', require('./routes/reports'));
 
 // API Info endpoint
 app.get('/', (req, res) => {

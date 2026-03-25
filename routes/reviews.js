@@ -282,4 +282,73 @@ router.delete('/:productId', auth, async (req, res) => {
 });
 
 
+// ─── GET /api/reviews/:productId/ai-summary ──────────────────────────────────
+/**
+ * Uses Groq to read all stored reviews for a product and return a Pros, Cons, and Verdict JSON.
+ */
+router.get('/:productId/ai-summary', auth, async (req, res) => {
+    const { productId } = req.params;
+
+    // Verify ownership
+    const product = await prisma.product.findUnique({
+        where: { id: productId },
+        select: { userId: true },
+    });
+
+    if (!product) return res.status(404).json({ error: 'Product not found' });
+    if (product.userId && product.userId !== req.user.id) {
+        return res.status(403).json({ error: 'Access denied' });
+    }
+
+    try {
+        const { generateReviewSummary } = require('../services/aiService');
+        const summary = await generateReviewSummary(productId);
+        return res.json({ success: true, aiVerdict: summary });
+    } catch (err) {
+        console.error('[Reviews API] AI summary error:', err.message);
+        return res.status(500).json({ error: 'Failed to generate AI verdict', details: err.message });
+    }
+});
+
+
+// ─── GET /api/reviews/:productId/trends ────────────────────────────────────
+/**
+ * Returns review volume over time (grouped by year).
+ */
+router.get('/:productId/trends', auth, async (req, res) => {
+    const { productId } = req.params;
+
+    try {
+        const reviews = await prisma.review.findMany({
+            where: { productId },
+            select: { reviewDate: true },
+        });
+
+        // Simple year extraction from string (e.g., "January 1, 2024")
+        const yearCounts = {};
+        reviews.forEach(r => {
+            if (r.reviewDate) {
+                const match = r.reviewDate.match(/\d{4}/); // find 4 consecutive digits
+                if (match) {
+                    const year = match[0];
+                    yearCounts[year] = (yearCounts[year] || 0) + 1;
+                }
+            }
+        });
+
+        // Convert to sorted array for chart
+        const sortedYears = Object.keys(yearCounts).sort();
+        const trends = sortedYears.map(year => ({
+            year,
+            count: yearCounts[year]
+        }));
+
+        return res.json({ success: true, trends });
+    } catch (err) {
+        console.error('[Reviews API] Trends error:', err.message);
+        return res.status(500).json({ error: 'Database error', details: err.message });
+    }
+});
+
+
 module.exports = router;

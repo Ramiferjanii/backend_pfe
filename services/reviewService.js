@@ -54,10 +54,11 @@ async function fetchAndSaveReviews(productId, options = {}) {
         throw new Error(`Product not found: ${productId}`);
     }
 
-    // Use reference if available, fall back to product name
-    const searchQuery = (product.reference && product.reference.trim())
-        ? product.reference.trim()
-        : product.name.trim();
+    // Use product name as the primary search query, since local references/SKUs often fail on Amazon.
+    // If name is strangely empty, fall back to reference.
+    const searchQuery = (product.name && product.name.trim())
+        ? product.name.trim()
+        : (product.reference ? product.reference.trim() : '');
 
     console.log(
         `[ReviewService] Starting review pipeline for product "${product.name}" (ID: ${productId}), query: "${searchQuery}"`
