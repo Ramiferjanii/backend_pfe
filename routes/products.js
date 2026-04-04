@@ -174,5 +174,46 @@ router.get('/:id', auth, async (req, res) => {
     }
 });
 
+// POST: Categorize uncategorized products using AI
+router.post('/categorize-all', auth, async (req, res) => {
+    try {
+        const uncategorizedProducts = await prisma.product.findMany({
+            where: {
+                userId: req.user.id,
+                OR: [
+                    { category: null },
+                    { category: '' },
+                    { category: 'Uncategorized' }
+                ]
+            },
+            take: 20 // limit to 20 to avoid rate limits
+        });
+
+        if (uncategorizedProducts.length === 0) {
+            return res.json({ success: true, message: 'All products are already categorized!' });
+        }
+
+        const { generateCategoryForProduct } = require('../services/aiService');
+        let updatedCount = 0;
+
+        for (const product of uncategorizedProducts) {
+            const aiCategory = await generateCategoryForProduct(product.name, product.overview);
+            
+            if (aiCategory && aiCategory !== "Unknown") {
+                await prisma.product.update({
+                    where: { id: product.id },
+                    data: { category: aiCategory }
+                });
+                updatedCount++;
+            }
+        }
+
+        res.json({ success: true, message: `Successfully categorized ${updatedCount} products.` });
+    } catch (error) {
+        console.error('Categorize error:', error);
+        res.status(500).json({ error: 'Failed to categorize products' });
+    }
+});
+
 module.exports = router;
 

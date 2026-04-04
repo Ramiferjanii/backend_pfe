@@ -278,10 +278,59 @@ The output MUST be a JSON object with this exact structure:
     }
 }
 
+/**
+ * Uses Groq AI to infer a short, standardized category for an uncategorized product.
+ */
+async function generateCategoryForProduct(productName, overview) {
+    if (!groq) {
+        throw new Error("Groq API Key is missing in .env");
+    }
+
+    const systemPrompt = `You are a product categorization AI.
+Read the product name and description and classify it into ONE of these standardized e-commerce categories:
+- Phones & Tablets
+- Computers & Laptops
+- TV & Audio
+- Home Appliances
+- Gaming
+- Networking
+- Accessories
+- Office Supplies
+- Other
+
+Output ONLY a raw JSON object string with this exact structure:
+{
+  "category": "The selected category name"
+}`;
+
+    const userPrompt = `Product Name: ${productName}
+Overview: ${overview || 'None'}`;
+
+    try {
+        const chatCompletion = await groq.chat.completions.create({
+            messages: [
+                { role: 'system', content: systemPrompt },
+                { role: 'user', content: userPrompt }
+            ],
+            model: 'llama-3.3-70b-versatile',
+            temperature: 0.1,
+            response_format: { type: "json_object" },
+        });
+
+        const resultJson = chatCompletion.choices[0]?.message?.content;
+        const parsed = JSON.parse(resultJson);
+        return parsed.category || "Other";
+    } catch (err) {
+        console.error('[AI Service] Categorization failed:', err);
+        return "Unknown";
+    }
+}
+
 module.exports = {
     generateReviewSummary,
     analyzeDeal,
     chatWithAssistant,
     generateDashboardInsights,
-    generateMarketReport
+    generateMarketReport,
+    generateCategoryForProduct
 };
