@@ -77,9 +77,16 @@ def fetch_rainforest_reviews(asin: str, api_key: str, max_reviews: int) -> list[
             return []
 
         top_reviews = data.get('product', {}).get('top_reviews', [])
+        
+        # Grab Best Sellers Rank
+        bestsellers_rank = data.get('product', {}).get('bestsellers_rank')
+        bsr = None
+        if bestsellers_rank and isinstance(bestsellers_rank, list) and len(bestsellers_rank) > 0:
+            bsr = bestsellers_rank[0].get('rank')
+
         if not top_reviews:
             log.info("No more reviews found from API.")
-            return []
+            return [], bsr
             
         for r in top_reviews:
             reviews.append({
@@ -97,7 +104,7 @@ def fetch_rainforest_reviews(asin: str, api_key: str, max_reviews: int) -> list[
     except Exception as e:
         log.error(f"Review API request failed: {e}")
         
-    return reviews[:max_reviews]
+    return reviews[:max_reviews], bsr
 
 def analyze_sentiment(reviews: list[dict]) -> list[dict]:
     """Run VADER on each review. Adds: sentiment, compound, sentimentScores."""
@@ -182,13 +189,18 @@ def main():
             sys.exit(0)
 
         # ── 2. Fetch reviews ─────────────────────────────────────────────
-        reviews = fetch_rainforest_reviews(asin, api_key, args.max_reviews)
+        result = fetch_rainforest_reviews(asin, api_key, args.max_reviews)
+        if isinstance(result, tuple) and len(result) == 2:
+            reviews, bsr = result
+        else:
+            reviews, bsr = result, None
 
         if not reviews:
             print(json.dumps({
                 "success": False,
                 "productId": args.product_id,
                 "asin": asin,
+                "bsr": bsr,
                 "error": "No reviews found for this ASIN on Amazon.",
             }))
             sys.exit(0)
@@ -203,6 +215,7 @@ def main():
             "success":   True,
             "productId": args.product_id,
             "asin":      asin,
+            "bsr":       bsr,
             "reviews":   enriched,
             "summary":   summary,
         }, ensure_ascii=False))

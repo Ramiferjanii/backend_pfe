@@ -40,6 +40,7 @@ app.use('/api/chat', require('./routes/chat'));
 app.use('/api/notifications', require('./routes/notifications'));
 app.use('/api/dashboard', dashboardRoutes);
 app.use('/api/reports', require('./routes/reports'));
+app.use('/api/chatbot', require('./routes/chatbotRoutes'));
 
 // API Info endpoint
 app.get('/', (req, res) => {

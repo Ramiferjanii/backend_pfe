@@ -192,7 +192,7 @@ router.delete('/:id', auth, async (req, res) => {
 router.post('/:id/scrape-trigger', auth, async (req, res) => {
     try {
         const websiteId = req.params.id;
-        const { mode = 'static', url, filters } = req.body;
+        const { mode = 'auto', url, filters } = req.body;
 
         // Verify existence and ownership
         const website = await prisma.website.findUnique({

@@ -324,7 +324,15 @@ def extract_list_data(soup, domain, min_price=None, max_price=None, name_filter=
 
 def scrape_static(start_url, min_price=None, max_price=None, name_filter=None, reference_filter=None):
     print(f"Using Static Scraper for: {start_url}", file=sys.stderr)
-    headers = {'User-Agent': 'Mozilla/5.0'}
+    headers = {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
+        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8',
+        'Accept-Language': 'fr-TN,fr;q=0.9,en-US;q=0.8,en;q=0.7',
+        'Accept-Encoding': 'gzip, deflate, br',
+        'Connection': 'keep-alive',
+        'Upgrade-Insecure-Requests': '1',
+        'Cache-Control': 'max-age=0',
+    }
     domain = urllib.parse.urlparse(start_url).netloc
     config = None
     for d, cfg in LIST_CONFIGS.items():
@@ -334,15 +342,21 @@ def scrape_static(start_url, min_price=None, max_price=None, name_filter=None, r
     visited_urls = set()
     page_count = 0
     MAX_PAGES = 50
+    session = requests.Session()
+    session.headers.update(headers)
     while current_url and current_url not in visited_urls and page_count < MAX_PAGES:
         print(f"Scraping page {page_count + 1}: {current_url}", file=sys.stderr)
         visited_urls.add(current_url)
         try:
-            response = requests.get(current_url, headers=headers, timeout=15, verify=False)
+            response = session.get(current_url, timeout=20, verify=False)
             response.raise_for_status()
             soup = BeautifulSoup(response.text, 'html.parser')
             list_data = extract_list_data(soup, domain, min_price, max_price, name_filter, reference_filter)
             if list_data is not None:
+                if page_count == 0 and len(list_data) == 0:
+                    # No products on first page — likely bot detection / CAPTCHA
+                    print(f"WARNING: 0 items on first page for {current_url} — possible bot detection", file=sys.stderr)
+                    return None  # Caller will fall back to Selenium
                 all_list_data.extend(list_data)
                 page_count += 1
                 current_url = None
@@ -350,6 +364,7 @@ def scrape_static(start_url, min_price=None, max_price=None, name_filter=None, r
                     next_el = soup.select_one(config["next"])
                     if next_el and next_el.get("href"):
                         current_url = urllib.parse.urljoin(start_url, next_el.get("href"))
+                        time.sleep(1)  # polite delay between pages
             else:
                 if page_count == 0:
                      if min_price or max_price or name_filter or reference_filter: return None
@@ -363,6 +378,7 @@ def scrape_static(start_url, min_price=None, max_price=None, name_filter=None, r
     if all_list_data:
          return {"type": "list", "data": all_list_data, "domain": domain, "url": start_url, "timestamp": datetime.datetime.now().isoformat()}
     return None
+
 
 def scrape_selenium(url, min_price=None, max_price=None, name_filter=None, reference_filter=None):
     print(f"Using Selenium Scraper for: {url}", file=sys.stderr)
@@ -441,11 +457,12 @@ def main():
     reference_filter = args.referenceFilter.lower() if args.referenceFilter else None
     
     supabase = get_supabase_client()
-    url = args.url or args.website_id
-    website_id = None
+    # Priority: use URL passed directly as argument, then fall back to Supabase lookup
+    url = args.url if args.url else None
+    website_id = args.website_id if args.website_id else None
     
-    if supabase and not args.url:
-         # Fetch website URL from Supabase if not provided
+    if not url and supabase:
+         # Fetch website URL from Supabase if URL not provided directly
          try:
              response = supabase.table('Website').select('*').eq('id', args.website_id).single().execute()
              if response.data:
@@ -453,8 +470,14 @@ def main():
                  url = website['url']
                  website_id = website['id']
          except Exception as e:
-             # print(f"Website fetch error: {e}", file=sys.stderr)
-             pass
+             print(f"Website fetch error: {e}", file=sys.stderr)
+    
+    if not url:
+        url = args.website_id  # Last resort: use the websiteId as URL (direct URL mode)
+
+    print(f"[SCRAPER DEBUG] website_id={args.website_id}", file=sys.stderr)
+    print(f"[SCRAPER DEBUG] mode={args.mode}", file=sys.stderr)
+    print(f"[SCRAPER DEBUG] url={url}", file=sys.stderr)
 
     try:
         scraped_data = None
@@ -462,65 +485,24 @@ def main():
             if "wiki.tn" in url or "mytek.tn" in url:
                 scraped_data = scrape_selenium(url, min_price, max_price, name_filter, reference_filter)
             else:
-                try: scraped_data = scrape_static(url, min_price, max_price, name_filter, reference_filter)
-                except: scraped_data = scrape_selenium(url, min_price, max_price, name_filter, reference_filter)
+                try:
+                    scraped_data = scrape_static(url, min_price, max_price, name_filter, reference_filter)
+                except Exception as static_err:
+                    print(f"[SCRAPER DEBUG] Static scrape failed: {static_err}, falling back to Selenium", file=sys.stderr)
+                    scraped_data = scrape_selenium(url, min_price, max_price, name_filter, reference_filter)
         elif args.mode == "selenium":
             scraped_data = scrape_selenium(url, min_price, max_price, name_filter, reference_filter)
         else:
             scraped_data = scrape_static(url, min_price, max_price, name_filter, reference_filter)
         if not scraped_data:
-            if min_price or max_price or name_filter or reference_filter:
-                print(json.dumps({"success": True, "data": {"type": "list", "data": [], "count": 0, "domain": urllib.parse.urlparse(url).netloc, "url": url, "timestamp": datetime.datetime.now().isoformat()}}))
-            else:
-                print(json.dumps({"error": "No data scraped"}))
+            # Always return empty list result rather than an error, so Node can handle gracefully
+            print(json.dumps({"success": True, "data": {"type": "list", "data": [], "count": 0, "domain": urllib.parse.urlparse(url).netloc, "url": url, "timestamp": datetime.datetime.now().isoformat()}}))
             return
 
-        if supabase and website_id:
-            summary = scraped_data
-            if scraped_data.get("type") == "list":
-                 summary = {"type": "list", "count": len(scraped_data["data"]), "url": url, "timestamp": scraped_data["timestamp"]}
-            
-            # Update Website with last scrape data
-            supabase.table('Website').update({
-                "scrapedData": json.dumps(summary),
-                "lastScraped": datetime.datetime.now().isoformat()
-            }).eq('id', website_id).execute()
+        # NOTE: Database writes are handled by Node.js/Prisma (scraperService.js).
+        # The Python scraper only scrapes and outputs JSON — do NOT write to DB here.
+        # (Previous Supabase write code caused 'permission denied' errors that crashed output.)
 
-            items = scraped_data["data"] if scraped_data.get("type") == "list" else [scraped_data]
-            for item in items:
-                try:
-                    p_url = item.get("url", url)
-                    p_doc = {
-                        "name": item.get("name", "Unknown"),
-                        "price": item.get("price", "Not found"),
-                        "priceAmount": float(item.get("priceAmount", 0.0)),
-                        "reference": item.get("reference", "Not found"),
-                        "overview": item.get("overview", "Not found"),
-                        "category": item.get("category", "Not found"),
-                        "url": p_url,
-                        "domain": item.get("domain") or scraped_data.get("domain", ""),
-                        "websiteId": website_id,
-                        "scrapedAt": datetime.datetime.now().isoformat()
-                    }
-                    
-                    # Upsert product
-                    # Check if exists by URL
-                    # Note: upsert in Supabase usually requires conflict on unique constraint.
-                    # Assuming 'url' is unique in Product schema? 
-                    # Checking schema: URL is NOT unique in Product model! 
-                    # "url String" in Model Product.
-                    # So we must search first.
-                    
-                    existing = supabase.table('Product').select('id').eq('url', p_url).execute()
-                    if existing.data and len(existing.data) > 0:
-                        supabase.table('Product').update(p_doc).eq('id', existing.data[0]['id']).execute()
-                    else:
-                        supabase.table('Product').insert(p_doc).execute()
-                        
-                except Exception as e:
-                    # print(f"Product save error: {e}", file=sys.stderr)
-                    pass
-                    
         print(json.dumps({"success": True, "data": scraped_data}))
     except Exception as e:
         print(json.dumps({"error": str(e)}))

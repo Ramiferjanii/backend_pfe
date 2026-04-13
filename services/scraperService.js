@@ -8,7 +8,7 @@ const prisma = require('../lib/prisma');
  * @param {string} mode - 'static' or 'selenium'
  * @returns {Promise<Object>} - The updated data
  */
-async function scrapeWebsiteTask(websiteId, mode = 'static', url, filters = {}, userId = null) {
+async function scrapeWebsiteTask(websiteId, mode = 'auto', url, filters = {}, userId = null) {
     if (!url) {
         console.error(`ERROR: URL is missing for website task: ID=${websiteId}`);
         throw new Error("URL is required for scraping");
@@ -43,7 +43,8 @@ async function scrapeWebsiteTask(websiteId, mode = 'static', url, filters = {}, 
         if (filters?.name) args.push('--nameFilter', String(filters.name));
         if (filters?.reference) args.push('--referenceFilter', String(filters.reference));
 
-        console.log(`Python args:`, args);
+        console.log(`Python args: ${args.join(' ')}`);
+        console.log(`[SCRAPER] Spawning: ${pythonPath} with URL=${url}, Mode=${mode}`);
         const pythonProcess = spawn(pythonPath, args);
 
         pythonProcess.on('error', async (err) => {
@@ -61,7 +62,9 @@ async function scrapeWebsiteTask(websiteId, mode = 'static', url, filters = {}, 
         });
 
         pythonProcess.stderr.on('data', (data) => {
-            errorOutput += data.toString();
+            const txt = data.toString();
+            errorOutput += txt;
+            console.log(`[PY STDERR] ${txt.trim()}`);
         });
 
         pythonProcess.on('close', async (code) => {

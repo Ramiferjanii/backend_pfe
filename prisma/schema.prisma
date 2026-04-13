@@ -49,6 +49,8 @@ model Product {
   category    String?
   url         String
   image       String?
+  bsr         Int?
+  monthlySales Int?
   domain      String?
   websiteId   String
   userId      String?

@@ -76,11 +76,27 @@ async function fetchAndSaveReviews(productId, options = {}) {
         throw new Error(pythonResult.error || 'Python scraper returned an error');
     }
 
-    const { reviews: rawReviews, asin: resolvedAsin, summary } = pythonResult;
+    const { reviews: rawReviews, asin: resolvedAsin, summary, bsr } = pythonResult;
 
     console.log(
-        `[ReviewService] Python returned ${rawReviews.length} reviews for ASIN ${resolvedAsin}`
+        `[ReviewService] Python returned ${rawReviews.length} reviews for ASIN ${resolvedAsin} (BSR: ${bsr || 'Unknown'})`
     );
+
+    // ── 2.5 Update Product with BSR ─────────────────────────────────────
+    let monthlySales = null;
+    if (bsr && !isNaN(bsr) && bsr > 0) {
+        // Simple heuristic for BSR to Monthly Sales: 
+        monthlySales = Math.max(1, Math.round(3000000 / bsr));
+        try {
+            await prisma.product.update({
+                where: { id: productId },
+                data: { bsr, monthlySales }
+            });
+            console.log(`[ReviewService] Updated product ${productId} with BSR ${bsr} -> ~${monthlySales} est. sales`);
+        } catch (e) {
+            console.error(`[ReviewService] Failed to update BSR on product:`, e);
+        }
+    }
 
     // ── 3. Persist reviews to database ─────────────────────────────────────
     let savedCount = 0;
@@ -139,6 +155,8 @@ async function fetchAndSaveReviews(productId, options = {}) {
         productId,
         asin: resolvedAsin,
         summary,
+        bsr,
+        monthlySales,
         savedCount,
         reviews: rawReviews,
     };
