@@ -56,6 +56,11 @@ class RagService {
   async handleChatQuery(query) {
     try {
       const store = await this.getVectorStore();
+      
+      if (!store) {
+        return "I'm sorry, I'm having trouble accessing my knowledge base right now. Please try again later or contact support.";
+      }
+
       const retriever = store.asRetriever(3);
 
       const promptTemplate = `

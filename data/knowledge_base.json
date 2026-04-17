@@ -1,0 +1,22 @@
+[
+  {
+    "question": "How do I start a new scraping job?",
+    "answer": "Go to the Scraping page, fill in the target URL, configure fields, then click 'Start Scraping'. Results appear in Scraping Results when done."
+  },
+  {
+    "question": "How is the Competitor Battle analysis generated?",
+    "answer": "The platform uses AI to compare your products against competitor listings, evaluating price, description quality, and review sentiment."
+  },
+  {
+    "question": "What does the Market Reports page show?",
+    "answer": "Market Reports aggregate price trends, category demand signals, and competitor movement over time."
+  },
+  {
+    "question": "How do I track price changes over time?",
+    "answer": "Each product card has a 'Price History' chart. The platform re-scrapes tracked products on a schedule and records each price point."
+  },
+  {
+    "question": "Why is my scraping job returning 0 results?",
+    "answer": "Check the Scraping Health page for diagnostics. Common causes: anti-bot protections, site structure changes, or invalid selectors."
+  }
+]

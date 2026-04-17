@@ -2,6 +2,9 @@ const express = require('express');
 const router = express.Router();
 const ragService = require('../services/ragService');
 
+const { PrismaClient } = require('@prisma/client');
+const prisma = new PrismaClient();
+
 router.post('/query', async (req, res) => {
   try {
     const { message } = req.body;
@@ -10,6 +13,19 @@ router.post('/query', async (req, res) => {
     }
 
     const answer = await ragService.handleChatQuery(message);
+
+    // Track the question
+    const question = message.trim().slice(0, 300);
+    try {
+      await prisma.chatQuestion.upsert({
+        where: { question },
+        update: { count: { increment: 1 } },
+        create: { question },
+      });
+    } catch (dbErr) {
+      console.error('Failed to save chatbot question:', dbErr.message);
+    }
+
     res.json({ answer });
   } catch (error) {
     console.error("Chatbot Error:", error);

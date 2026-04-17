@@ -38,13 +38,6 @@ SITE_CONFIGS = {
         "reference": ["div[itemprop='sku']", ".sku span"],
         "overview": [".product.attribute.overview", ".product-item-details", "#description"],
         "category": [".breadcrumbs", "ul.items"]
-    },
-    "wiki.tn": {
-        "name": ["h1.product_title", "h1"],
-        "price": [".price span.woocommerce-Price-amount", ".price", ".current-price"],
-        "reference": [".sku", ".reference"],
-        "overview": [".woocommerce-product-details__short-description", "#description", ".product-short-description"],
-        "category": [".woocommerce-breadcrumb", "nav.woocommerce-breadcrumb"]
     }
 }
 
@@ -66,15 +59,6 @@ LIST_CONFIGS = {
         "img": "img",
         "reference": ".sku",
         "next": "a.action.next"
-    },
-    "wiki.tn": {
-        "card": ".product-miniature, .product-container, .product-type-simple, .product, .product-card, .brxe-loop-item", 
-        "name": ".product-title a, .product-name, .woocommerce-loop-product__title, .product-card__title a, h3.title a",
-        "price": ".price, .product-price, .product-price-and-shipping, .product-card__price, .brxe-product-price",
-        "url": ".product-title a, .product-name, .woocommerce-loop-product__link, .product-card__title a",
-        "img": "img",
-        "reference": ".sku, .product-reference",
-        "next": "a.next, .brxe-pagination a.next"
     }
 }
 
@@ -482,7 +466,7 @@ def main():
     try:
         scraped_data = None
         if args.mode == "auto":
-            if "wiki.tn" in url or "mytek.tn" in url:
+            if "mytek.tn" in url:
                 scraped_data = scrape_selenium(url, min_price, max_price, name_filter, reference_filter)
             else:
                 try:
