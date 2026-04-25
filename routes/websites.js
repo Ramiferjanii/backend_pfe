@@ -31,14 +31,13 @@ router.get('/', auth, async (req, res) => {
         const pPage = parseInt(page) || 1;
         const skip = (pPage - 1) * pLimit;
 
-        const where = {
-            userId: req.user.id
-        };
+        // Make websites globally visible to all users
+        const where = {};
 
         if (category && category.trim()) where.category = category.trim();
         if (isActive !== undefined) where.isActive = isActive === 'true';
 
-        console.log(`DEBUG - Prisma Websites Query: User=${req.user.id}`);
+        console.log(`DEBUG - Prisma Websites Query: Fetching all websites`);
 
         const [websites, total] = await prisma.$transaction([
             prisma.website.findMany({
@@ -75,11 +74,7 @@ router.get('/:id', auth, async (req, res) => {
 
         if (!website) return res.status(404).json({ error: 'Website not found' });
 
-        // Check ownership
-        if (website.userId && website.userId !== req.user.id) {
-            return res.status(403).json({ error: 'Access denied' });
-        }
-
+        // Allow all users to view global website platforms
         res.json({ website: formatWebsite(website) });
     } catch (error) {
         res.status(500).json({ error: error.message });
@@ -91,15 +86,19 @@ router.post('/', auth, async (req, res) => {
     try {
         const { name, url, description, category, scrapeFrequency, isActive } = req.body;
 
-        if (!name || !url) {
+        let normalizedUrl = url.trim();
+        if (normalizedUrl.endsWith('/')) {
+            normalizedUrl = normalizedUrl.slice(0, -1);
+        }
+
+        if (!name || !normalizedUrl) {
             return res.status(400).json({ error: 'Name and URL are required fields' });
         }
 
-        // duplicate check by URL (scoped to USER)
+        // duplicate check by URL (globally)
         const existing = await prisma.website.findFirst({
             where: {
-                url,
-                userId: req.user.id
+                url: normalizedUrl
             }
         });
 
@@ -110,7 +109,7 @@ router.post('/', auth, async (req, res) => {
         const newWebsite = await prisma.website.create({
             data: {
                 name,
-                url,
+                url: normalizedUrl,
                 description,
                 category: category || 'general',
                 scrapeFrequency: scrapeFrequency || 'on-demand',
@@ -200,9 +199,8 @@ router.post('/:id/scrape-trigger', auth, async (req, res) => {
         });
 
         if (!website) return res.status(404).json({ error: 'Website not found' });
-        if (website.userId && website.userId !== req.user.id) {
-            return res.status(403).json({ error: 'Access denied' });
-        }
+        
+        // Allow all users to scrape global website platforms
 
         // Determine target URL: Custom URL > Website Default URL
         const targetUrl = url && url.trim() ? url.trim() : website.url;

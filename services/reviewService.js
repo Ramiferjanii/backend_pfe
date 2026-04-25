@@ -76,23 +76,24 @@ async function fetchAndSaveReviews(productId, options = {}) {
         throw new Error(pythonResult.error || 'Python scraper returned an error');
     }
 
-    const { reviews: rawReviews, asin: resolvedAsin, summary, bsr } = pythonResult;
+    const { reviews: rawReviews, asin: resolvedAsin, summary, bsr, monthlySales: pyMonthlySales, stockInfo } = pythonResult;
 
     console.log(
-        `[ReviewService] Python returned ${rawReviews.length} reviews for ASIN ${resolvedAsin} (BSR: ${bsr || 'Unknown'})`
+        `[ReviewService] Python returned ${rawReviews.length} reviews for ASIN ${resolvedAsin} (BSR: ${bsr || 'Unknown'}, Stock: ${stockInfo?.stock_level ?? 'N/A'})`
     );
 
-    // ── 2.5 Update Product with BSR ─────────────────────────────────────
-    let monthlySales = null;
-    if (bsr && !isNaN(bsr) && bsr > 0) {
-        // Simple heuristic for BSR to Monthly Sales: 
-        monthlySales = Math.max(1, Math.round(3000000 / bsr));
+    // ── 2.5 Update Product with BSR and Sales ───────────────────────────
+    let monthlySales = pyMonthlySales;
+    if (bsr || monthlySales) {
         try {
             await prisma.product.update({
                 where: { id: productId },
-                data: { bsr, monthlySales }
+                data: { 
+                    bsr: bsr ? parseInt(bsr) : undefined, 
+                    monthlySales: monthlySales ? parseInt(monthlySales) : undefined 
+                }
             });
-            console.log(`[ReviewService] Updated product ${productId} with BSR ${bsr} -> ~${monthlySales} est. sales`);
+            console.log(`[ReviewService] Updated product ${productId} with BSR ${bsr} -> ${monthlySales} units/mo`);
         } catch (e) {
             console.error(`[ReviewService] Failed to update BSR on product:`, e);
         }
@@ -157,6 +158,7 @@ async function fetchAndSaveReviews(productId, options = {}) {
         summary,
         bsr,
         monthlySales,
+        stockInfo,
         savedCount,
         reviews: rawReviews,
     };

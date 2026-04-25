@@ -170,13 +170,32 @@ Goal: Answer their questions about these products, give recommendations, or prov
 
         console.log('[AI Chat] Sending', groqMessages.length, 'messages to Groq...');
 
-        const chatCompletion = await groq.chat.completions.create({
-            messages: groqMessages,
-            model: 'llama-3.3-70b-versatile',
-            temperature: 0.6,
+        const { ChatGroq } = require("@langchain/groq");
+        const { CallbackHandler } = require("langfuse-langchain");
+        
+        const llm = new ChatGroq({
+            apiKey: process.env.GROQ_API_KEY,
+            model: "llama-3.3-70b-versatile",
+            temperature: 0.6
         });
 
-        return chatCompletion.choices[0]?.message?.content || "I couldn't process that request.";
+        const langfuseHandler = new CallbackHandler({
+            publicKey: process.env.LANGFUSE_PUBLIC_KEY,
+            secretKey: process.env.LANGFUSE_SECRET_KEY,
+            baseUrl: process.env.LANGFUSE_BASE_URL,
+            tags: ["shopping-assistant"]
+        });
+
+        // LangChain accepts arrays of [role, content]
+        const langChainMessages = groqMessages.map(m => [m.role, m.content]);
+
+        const response = await llm.invoke(langChainMessages, {
+            callbacks: [langfuseHandler]
+        });
+
+        await langfuseHandler.flushAsync();
+
+        return response.content || "I couldn't process that request.";
     } catch (err) {
         console.error('[AI Service] Chatbot failed:', err?.error || err?.message || err);
         throw new Error('Groq AI chat failed');

@@ -58,68 +58,56 @@ LIST_CONFIGS = {
         "url": ".product-item-link",
         "img": "img",
         "reference": ".sku",
-        "next": "a.action.next"
+        "next": "a[aria-label='Next'], a.action.next, li.pages-item-next a"
     }
 }
 
 def parse_price(price_str):
-    """Extracts numeric value from price string. Handles TND format (e.g. '1,099,000 DT' = 1099.000)."""
+    """Extracts numeric value from price string. Handles Tunisian format (e.g. '1.099,000 DT' or '849,000')."""
     if not price_str: return 0.0
     try:
-        # Pre-clean: remove all whitespace including non-breaking spaces
-        clean_str = re.sub(r'[\s\u00A0\u1680\u180E\u2000-\u200B\u202F\u205F\u3000]', '', price_str.strip())
+        # Handle multiple lines (take first one)
+        price_str = price_str.strip().split('\n')[0].strip()
         
-        # Remove non-numeric except commas and dots
+        # Remove all whitespace including non-breaking spaces
+        clean_str = re.sub(r'[\s\u00A0\u1680\u180E\u2000-\u200B\u202F\u205F\u3000]', '', price_str)
+        
+        # Remove currency and non-numeric except commas and dots
         clean = re.sub(r'[^\d.,]', '', clean_str)
         if not clean: return 0.0
         
-        # Count commas and dots
         comma_count = clean.count(',')
         dot_count = clean.count('.')
         
-        if comma_count >= 1 and dot_count >= 1:
-            # Format: 1.099,000 or 1,099.00
+        if comma_count > 0 and dot_count > 0:
+            # Format like 1.099,000 or 1,099.00
+            # Usually last is decimal
             if clean.rfind(',') > clean.rfind('.'):
-                # , is decimal: 1.099,000 -> 1099.000
+                # , is decimal
                 clean = clean.replace('.', '').replace(',', '.')
             else:
-                # . is decimal: 1,099.00 -> 1099.00
+                # . is decimal
                 clean = clean.replace(',', '')
-        elif comma_count > 0:
-            # Single or many commas
+        elif comma_count > 1:
+            clean = clean.replace(',', '')
+        elif dot_count > 1:
+            clean = clean.replace('.', '')
+        elif comma_count == 1:
             parts = clean.split(',')
-            if len(parts) == 2 and len(parts[1]) == 3:
-                # TND Millimes: 849,000 -> 849.0
-                clean = parts[0] + '.' + parts[1]
-            else:
-                # Standard decimal or thousand separator
-                if comma_count == 1:
-                    clean = clean.replace(',', '.')
-                else:
-                    clean = clean.replace(',', '')
-        elif dot_count > 0:
-            # Only dots
-            if dot_count > 1:
-                clean = clean.replace('.', '')
-            else:
-                parts = clean.split('.')
-                if len(parts[1]) == 3:
-                    # 849.000 remains 849.000
-                    pass
-                else:
-                    # 19.99 remains 19.99
-                    pass
-
+            if len(parts[1]) == 3: clean = parts[0] + '.' + parts[1]
+            else: clean = clean.replace(',', '.')
+        elif dot_count == 1:
+            parts = clean.split('.')
+            if len(parts[1]) == 3: pass # e.g. 1.099 remains 1.099
+            else: pass # e.g. 19.99 remains 19.99
+            
         val = float(clean)
-        
-        # Final safety check for TND (if value is in millimes like 1150000 instead of 1150.0)
+        # Final safety check for Tunisian Dinar (if value is in millimes like 1150000 instead of 1150.0)
         if val > 50000:
             val = val / 1000.0
-            
         return val
     except:
-        pass
-    return 0.0
+        return 0.0
 
 def extract_reference_from_url(url, domain):
     if not url: return None
@@ -232,6 +220,8 @@ def extract_list_data(soup, domain, min_price=None, max_price=None, name_filter=
     items = []
     cards = soup.select(config["card"])
     print(f"Found {len(cards)} items on {domain}", file=sys.stderr)
+    if len(cards) == 0:
+        return None
     for card in cards:
         try:
             item = {}
@@ -242,11 +232,35 @@ def extract_list_data(soup, domain, min_price=None, max_price=None, name_filter=
             if config.get("url") and not item.get("url"):
                  url_el = card.select_one(config["url"])
                  if url_el: item["url"] = url_el.get("href")
+            item["price"] = "Not found"
+            item["priceAmount"] = 0.0
             price_el = card.select_one(config["price"])
             if price_el:
-                val = price_el.get_text().strip()
-                item["price"] = val
-                item["priceAmount"] = parse_price(val)
+                # Get clean text, handle cases where old and new price are together
+                val = price_el.get_text(separator=' | ').strip()
+                print(f"DEBUG RAW PRICE: {val}", file=sys.stderr)
+                
+                # If we find multiple prices separated by our separator
+                if ' | ' in val:
+                    parts = [p.strip() for p in val.split(' | ') if 'DT' in p or any(c.isdigit() for c in p)]
+                    if len(parts) >= 2:
+                        item["price"] = parts[0]
+                        item["oldPrice"] = parts[1]
+                        item["priceAmount"] = parse_price(parts[0])
+                    else:
+                        item["price"] = parts[0] if parts else val
+                        item["priceAmount"] = parse_price(item["price"])
+                else:
+                    item["price"] = val
+                    item["priceAmount"] = parse_price(val)
+                    
+                # Extra check for Mytek specific structure
+                special = card.select_one(".special-price .price")
+                old = card.select_one(".old-price .price")
+                if special and old:
+                    item["price"] = special.get_text().strip()
+                    item["oldPrice"] = old.get_text().strip()
+                    item["priceAmount"] = parse_price(item["price"])
             if config.get("img"):
                 img_el = card.select_one(config["img"])
                 if img_el: item["image"] = img_el.get("src") or img_el.get("data-src")
@@ -260,6 +274,10 @@ def extract_list_data(soup, domain, min_price=None, max_price=None, name_filter=
                 items.append(item)
         except Exception as e:
             print(f"Error parsing card: {e}", file=sys.stderr); continue
+            
+    if len(cards) > 0 and len(items) == 0:
+        print("WARNING: Found cards but 0 valid items. Likely skeletons or bot protection.", file=sys.stderr)
+        return None
     
     # ------------------
     # ACTUAL FILTERING
@@ -273,6 +291,9 @@ def extract_list_data(soup, domain, min_price=None, max_price=None, name_filter=
     
     for item in items:
         valid = True
+        
+        # DEBUG PRINT FOR FILTERING
+        print(f"DEBUG ITEM: {item.get('name')[:40]}... | Price: {item.get('price')} | Amount: {item.get('priceAmount')}", file=sys.stderr)
         
         # Price Filter
         if min_price is not None or max_price is not None:
@@ -312,7 +333,7 @@ def scrape_static(start_url, min_price=None, max_price=None, name_filter=None, r
         'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
         'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8',
         'Accept-Language': 'fr-TN,fr;q=0.9,en-US;q=0.8,en;q=0.7',
-        'Accept-Encoding': 'gzip, deflate, br',
+        'Accept-Encoding': 'gzip, deflate',
         'Connection': 'keep-alive',
         'Upgrade-Insecure-Requests': '1',
         'Cache-Control': 'max-age=0',
@@ -337,10 +358,6 @@ def scrape_static(start_url, min_price=None, max_price=None, name_filter=None, r
             soup = BeautifulSoup(response.text, 'html.parser')
             list_data = extract_list_data(soup, domain, min_price, max_price, name_filter, reference_filter)
             if list_data is not None:
-                if page_count == 0 and len(list_data) == 0:
-                    # No products on first page — likely bot detection / CAPTCHA
-                    print(f"WARNING: 0 items on first page for {current_url} — possible bot detection", file=sys.stderr)
-                    return None  # Caller will fall back to Selenium
                 all_list_data.extend(list_data)
                 page_count += 1
                 current_url = None
@@ -351,11 +368,15 @@ def scrape_static(start_url, min_price=None, max_price=None, name_filter=None, r
                         time.sleep(1)  # polite delay between pages
             else:
                 if page_count == 0:
-                     if min_price or max_price or name_filter or reference_filter: return None
+                     # No list items found on first page. Might be a single product page or a bot block.
                      specific_data = extract_specific_data(soup, domain)
-                     data = {"title": soup.title.string.strip() if soup.title else "", "method": "static", "timestamp": datetime.datetime.now().isoformat(), "domain": domain, "type": "single"}
-                     if specific_data: data.update(specific_data)
-                     return data
+                     if specific_data and specific_data.get("name") != "Not found" and (specific_data.get("price") != "Not found" or specific_data.get("reference") != "Not found"):
+                         data = {"title": soup.title.string.strip() if soup.title else "", "method": "static", "timestamp": datetime.datetime.now().isoformat(), "domain": domain, "type": "single"}
+                         data.update(specific_data)
+                         return data
+                     else:
+                         print(f"WARNING: 0 items on first page for {current_url} — possible bot detection or skeletons", file=sys.stderr)
+                         return None # Fallback to Selenium
                 else: break
         except Exception as e:
             print(f"Error scraping {current_url}: {e}", file=sys.stderr); break
@@ -412,11 +433,13 @@ def scrape_selenium(url, min_price=None, max_price=None, name_filter=None, refer
                 else: break
             else:
                 if page_count == 0:
-                     if min_price or max_price or name_filter or reference_filter: return None
+                     # No list items found on first page. Might be a single product page.
                      specific_data = extract_specific_data(soup, domain)
-                     data = {"title": driver.title, "method": "selenium", "timestamp": datetime.datetime.now().isoformat(), "domain": domain, "type": "single"}
-                     if specific_data: data.update(specific_data)
-                     return data
+                     if specific_data and specific_data.get("name") != "Not found" and (specific_data.get("price") != "Not found" or specific_data.get("reference") != "Not found"):
+                         data = {"title": driver.title, "method": "selenium", "timestamp": datetime.datetime.now().isoformat(), "domain": domain, "type": "single"}
+                         data.update(specific_data)
+                         return data
+                     else: return None
                 else: break
         if all_list_data:
              return {"type": "list", "data": all_list_data, "domain": domain, "url": url, "timestamp": datetime.datetime.now().isoformat()}
@@ -478,6 +501,9 @@ def main():
             scraped_data = scrape_selenium(url, min_price, max_price, name_filter, reference_filter)
         else:
             scraped_data = scrape_static(url, min_price, max_price, name_filter, reference_filter)
+            if not scraped_data and args.mode == "static":
+                print("[SCRAPER DEBUG] Static mode failed to find items, forcing fallback to Selenium.", file=sys.stderr)
+                scraped_data = scrape_selenium(url, min_price, max_price, name_filter, reference_filter)
         if not scraped_data:
             # Always return empty list result rather than an error, so Node can handle gracefully
             print(json.dumps({"success": True, "data": {"type": "list", "data": [], "count": 0, "domain": urllib.parse.urlparse(url).netloc, "url": url, "timestamp": datetime.datetime.now().isoformat()}}))

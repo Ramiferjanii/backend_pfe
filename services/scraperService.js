@@ -148,6 +148,7 @@ async function scrapeWebsiteTask(websiteId, mode = 'auto', url, filters = {}, us
                             name: item.name || 'Unknown',
                             price: item.price || 'Not found',
                             priceAmount: parseFloat(item.priceAmount || 0.0),
+                            oldPrice: item.oldPrice || '',
                             reference: item.reference || '',
                             overview: item.overview || '',
                             category: item.category || '',

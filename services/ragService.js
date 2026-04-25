@@ -7,6 +7,7 @@ const { PromptTemplate } = require("@langchain/core/prompts");
 const fs = require('fs');
 const path = require('path');
 const { Document } = require("@langchain/core/documents");
+const { CallbackHandler } = require("langfuse-langchain");
 
 class RagService {
   constructor() {
@@ -86,9 +87,20 @@ class RagService {
         combineDocsChain,
       });
 
+      const langfuseHandler = new CallbackHandler({
+        publicKey: process.env.LANGFUSE_PUBLIC_KEY,
+        secretKey: process.env.LANGFUSE_SECRET_KEY,
+        baseUrl: process.env.LANGFUSE_BASE_URL,
+        tags: ["customer-support-bot"]
+      });
+
       const response = await retrievalChain.invoke({
         input: query,
+      }, {
+        callbacks: [langfuseHandler]
       });
+
+      await langfuseHandler.flushAsync();
 
       return response.answer;
     } catch (error) {

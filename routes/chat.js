@@ -17,21 +17,7 @@ router.post('/', auth, async (req, res) => {
         // Send conversation to Groq along with the user ID for context finding
         const reply = await chatWithAssistant(messages, req.user.id);
 
-        // Save the last user question to the DB (upsert by question text)
-        const lastUserMsg = [...messages].reverse().find(m => m.role === 'user');
-        if (lastUserMsg && lastUserMsg.content) {
-            // Normalize: trim and limit to 300 chars
-            const question = lastUserMsg.content.trim().slice(0, 300);
-            try {
-                await prisma.chatQuestion.upsert({
-                    where: { question },
-                    update: { count: { increment: 1 } },
-                    create: { question },
-                });
-            } catch (dbErr) {
-                console.error('Failed to save chat question:', dbErr.message);
-            }
-        }
+
 
         res.json({ success: true, reply });
     } catch (error) {

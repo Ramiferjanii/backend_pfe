@@ -18,5 +18,25 @@
   {
     "question": "Why is my scraping job returning 0 results?",
     "answer": "Check the Scraping Health page for diagnostics. Common causes: anti-bot protections, site structure changes, or invalid selectors."
+  },
+  {
+    "question": "What is the Product in Sidebar feature?",
+    "answer": "The Product in Sidebar feature allows you to pin frequently accessed products or your top tracked competitor products to the side navigation for quick access and real-time monitoring from anywhere in the platform."
+  },
+  {
+    "question": "How do I export my scraping data?",
+    "answer": "You can export your scraping results by clicking the 'Export' button on the top right of the Scraping Results page. You can choose to download the data in CSV or JSON format."
+  },
+  {
+    "question": "Can I schedule scraping jobs to run automatically?",
+    "answer": "Yes, in the Scraping setup page, you can choose a schedule (daily, weekly, or custom intervals) to automatically re-run the job and track price or stock changes continuously."
+  },
+  {
+    "question": "What does the Sentiment score in Competitor Battle mean?",
+    "answer": "The Sentiment score is an AI-generated metric that evaluates customer reviews for a product, ranging from 0 (very negative) to 100 (very positive)."
+  },
+  {
+    "question": "How do I add a new competitor product to track?",
+    "answer": "Navigate to the Products page, click 'Add Competitor Product', and paste the URL of the product listing you want to track."
   }
 ]

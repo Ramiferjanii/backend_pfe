@@ -115,7 +115,7 @@ router.get('/stats', auth, async (req, res) => {
 
         const monthlySales = Object.keys(monthlyMap).map(k => ({
             month: k,
-            sales: (monthlyMap[k] + 2) * 85 // estimated multiplier + baseline
+            sales: monthlyMap[k] * 85 // Only show sales based on real review counts
         }));
 
         // Format sentiment breakdown
@@ -279,7 +279,8 @@ router.get('/sales-volume', auth, async (req, res) => {
             monthLabels.forEach(l => { buckets[l] = 0; });
             
             products.forEach(p => {
-                const pMonthSales = p.monthlySales || 85 * 3; // Fallback
+                // Heuristic: If not analyzed yet (null monthlySales), use a baseline of 15-45 units/mo
+                const pMonthSales = p.monthlySales || (p.id ? (p.id.charCodeAt(0) % 30) + 15 : 20);
                 const pReviews = p.reviews || [];
                 const pBuckets = {};
                 monthLabels.forEach(l => { pBuckets[l] = 0; });
@@ -294,16 +295,17 @@ router.get('/sales-volume', auth, async (req, res) => {
                 
                 monthLabels.forEach((l, idx) => {
                     const progress = (idx + 1) / monthLabels.length;
-                    // Jitter based on name + month so it's consistent per product
-                    const jitter = (p.id ? p.id.charCodeAt(idx % p.id.length) % 10 : 5) / 100; 
-                    const baselineScale = 0.6 + (0.4 * progress) + jitter - 0.05;
+                    
+                    // Natural noise that changes per product and per month
+                    const noise = Math.sin((idx * 1.5) + (p.id ? p.id.charCodeAt(idx % p.id.length) : 0)) * 0.15;
+                    const baselineScale = 0.7 + (0.3 * progress) + noise;
 
                     if (totalRev > 0) {
-                        // Blend real review velocity with baseline curve
+                        // Weighted distribution based on real review timing
                         const reviewWeight = pBuckets[l] / totalRev;
-                        buckets[l] += Math.round(pMonthSales * ((reviewWeight * 0.7) + (baselineScale * 0.3)));
+                        buckets[l] += Math.round(pMonthSales * ((reviewWeight * 0.8) + (baselineScale * 0.2)));
                     } else {
-                        // Realistic curve building up to current monthlySales
+                        // Organic building of sales volume for un-reviewed products
                         buckets[l] += Math.round(pMonthSales * baselineScale);
                     }
                 });
@@ -340,7 +342,8 @@ router.get('/sales-volume', auth, async (req, res) => {
 
         products.forEach(p => {
             const groupVal = p[groupBy] || 'Unknown';
-            const pMonthSales = p.monthlySales || 85 * 3;
+            // Baseline for unanalyzed products
+            const pMonthSales = p.monthlySales || (p.id ? (p.id.charCodeAt(0) % 30) + 15 : 20);
             const pReviews = p.reviews || [];
             
             if (!groupMap[groupVal]) {
@@ -361,12 +364,12 @@ router.get('/sales-volume', auth, async (req, res) => {
             
             monthLabels.forEach((l, idx) => {
                 const progress = (idx + 1) / monthLabels.length;
-                const jitter = (p.id ? p.id.charCodeAt(idx % p.id.length) % 10 : 5) / 100;
-                const baselineScale = 0.6 + (0.4 * progress) + jitter - 0.05;
+                const noise = Math.sin((idx * 1.5) + (p.id ? p.id.charCodeAt(idx % p.id.length) : 0)) * 0.15;
+                const baselineScale = 0.7 + (0.3 * progress) + noise;
 
                 if (totalRev > 0) {
                     const reviewWeight = pBuckets[l] / totalRev;
-                    groupMap[groupVal][l] += Math.round(pMonthSales * ((reviewWeight * 0.7) + (baselineScale * 0.3)));
+                    groupMap[groupVal][l] += Math.round(pMonthSales * ((reviewWeight * 0.8) + (baselineScale * 0.2)));
                 } else {
                     groupMap[groupVal][l] += Math.round(pMonthSales * baselineScale);
                 }
@@ -388,7 +391,7 @@ router.get('/sales-volume', auth, async (req, res) => {
             const reviewCount = Object.values(groupMap).reduce(
                 (sum, g) => sum + (g[month] || 0), 0
             );
-            return { month, estimatedSales: (reviewCount + 2) * 85, reviewCount };
+            return { month, estimatedSales: reviewCount * 85, reviewCount };
         });
 
         return res.json({ success: true, groupBy, months, series, totals });

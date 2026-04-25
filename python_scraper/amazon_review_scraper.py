@@ -106,6 +106,34 @@ def fetch_rainforest_reviews(asin: str, api_key: str, max_reviews: int) -> list[
         
     return reviews[:max_reviews], bsr
 
+def fetch_rainforest_stock(asin: str, api_key: str) -> dict | None:
+    """Fetch current stock levels using Rainforest type=stock_estimation."""
+    log.info(f"Requesting Rainforest Stock Estimation for: {asin}")
+    params = {
+        'api_key': api_key,
+        'type': 'stock_estimation',
+        'amazon_domain': 'amazon.com',
+        'asin': asin
+    }
+    try:
+        resp = requests.get(RAINFOREST_API_URL, params=params, timeout=30)
+        data = resp.json()
+        if data.get('request_info', {}).get('success'):
+            return data.get('stock_estimation')
+    except Exception as e:
+        log.error(f"Stock API request failed: {e}")
+    return None
+
+def estimate_sales_from_bsr(rank: int) -> int:
+    """Estimates monthly unit sales based on BSR using a standard power-law formula."""
+    if not rank or rank <= 0: return 0
+    # Formula derived from common Electronics/Home category trends
+    # Sales ≈ a * (Rank ^ b)
+    a = 280000 
+    b = -0.78
+    estimated = a * (rank ** b)
+    return int(max(5, min(estimated, 50000))) # Realistic bounds
+
 def analyze_sentiment(reviews: list[dict]) -> list[dict]:
     """Run VADER on each review. Adds: sentiment, compound, sentimentScores."""
     analyzer = SentimentIntensityAnalyzer()
@@ -208,16 +236,24 @@ def main():
         # ── 3. VADER sentiment ────────────────────────────────────────────
         enriched = analyze_sentiment(reviews)
 
-        # ── 4. Build summary ──────────────────────────────────────────────
+        # ── 4. Rainforest Stock Estimation ────────────────────────────────
+        stock_data = fetch_rainforest_stock(asin, api_key)
+        
+        # ── 5. Market Sales Calculation (BSR based) ───────────────────────
+        monthly_sales = estimate_sales_from_bsr(bsr)
+
+        # ── 6. Build summary ──────────────────────────────────────────────
         summary = build_summary(enriched)
 
         print(json.dumps({
-            "success":   True,
-            "productId": args.product_id,
-            "asin":      asin,
-            "bsr":       bsr,
-            "reviews":   enriched,
-            "summary":   summary,
+            "success":       True,
+            "productId":     args.product_id,
+            "asin":          asin,
+            "bsr":           bsr,
+            "monthlySales":  monthly_sales,
+            "stockInfo":     stock_data,
+            "reviews":       enriched,
+            "summary":       summary,
         }, ensure_ascii=False))
 
     except Exception as exc:

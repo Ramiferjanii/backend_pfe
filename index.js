@@ -94,4 +94,10 @@ app.use((err, req, res, next) => {
 app.listen(port, () => {
     console.log(`REST API Server running on http://localhost:${port}`);
     console.log(`API Documentation: http://localhost:${port}/`);
+
+    // Auto-initialize RAG vector DB in the background
+    const ragService = require('./services/ragService');
+    ragService.initializeVectorDB()
+        .then(() => console.log('[RAG] Vector DB ready.'))
+        .catch((err) => console.error('[RAG] Failed to initialize Vector DB on startup:', err.message));
 });

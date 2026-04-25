@@ -33,13 +33,6 @@ router.post('/query', async (req, res) => {
   }
 });
 
-router.post('/init', async (req, res) => {
-  try {
-    await ragService.initializeVectorDB();
-    res.json({ message: "Vector DB successfully initialized and populated." });
-  } catch (error) {
-    res.status(500).json({ error: "Failed to initialize Vector DB." });
-  }
-});
+
 
 module.exports = router;
