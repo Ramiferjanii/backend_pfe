@@ -16,13 +16,20 @@ router.get('/', auth, async (req, res) => {
 
 // UPDATE Profile
 router.put('/', auth, async (req, res) => {
-    const { name, email, password } = req.body;
+    const { name, email, password, image } = req.body;
 
     try {
         const attributes = {};
         if (email) attributes.email = email;
         if (password) attributes.password = password;
-        if (name) attributes.user_metadata = { ...req.user.user_metadata, name };
+        
+        // Met à jour les métadonnées (nom et image/photo)
+        if (name || image) {
+            attributes.user_metadata = { ...req.user.user_metadata };
+            if (name) attributes.user_metadata.name = name;
+            if (name) attributes.user_metadata.full_name = name; // Garde la cohérence avec le frontend
+            if (image) attributes.user_metadata.avatar_url = image; // Stocke l'URL de l'image
+        }
 
         if (Object.keys(attributes).length === 0) {
              return res.status(400).json({ error: 'No fields to update' });

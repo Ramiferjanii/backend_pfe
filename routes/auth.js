@@ -5,7 +5,7 @@ const prisma = require('../lib/prisma');
 
 // Sync User from Supabase Auth to Public User Table
 router.post('/sync-user', async (req, res) => {
-    const { id, email, name, full_name, image } = req.body;
+    const { id, email, name, full_name, image, location } = req.body;
 
     if (!id || !email) {
         return res.status(400).json({ error: "Missing required fields" });
@@ -20,25 +20,26 @@ router.post('/sync-user', async (req, res) => {
             existingUser = await prisma.user.findUnique({ where: { id } });
         }
 
+        const dataToSave = {
+            email: email,
+            name: name || full_name || email.split('@')[0],
+            location: location !== undefined ? location : undefined,
+        };
+        if (image) dataToSave.image = image;
+
         let user;
         if (existingUser) {
             // Update existing user
             user = await prisma.user.update({
                 where: { id: existingUser.id },
-                data: {
-                    email: email,
-                    name: name || full_name || email.split('@')[0],
-                    image: image || undefined, // Only update if provided
-                },
+                data: dataToSave,
             });
         } else {
             // Create new user
             user = await prisma.user.create({
                 data: {
                     id: id,
-                    email: email,
-                    name: name || full_name || email.split('@')[0],
-                    image: image,
+                    ...dataToSave
                 },
             });
         }
