@@ -41,6 +41,7 @@ app.use('/api/notifications', require('./routes/notifications'));
 app.use('/api/dashboard', dashboardRoutes);
 app.use('/api/reports', require('./routes/reports'));
 app.use('/api/chatbot', require('./routes/chatbotRoutes'));
+app.use('/api/health', require('./routes/health'));
 
 // API Info endpoint
 app.get('/', (req, res) => {
