@@ -49,6 +49,12 @@ def search_rainforest_for_asin(reference: str, api_key: str) -> str | None:
             asin = data['search_results'][0].get('asin')
             log.info(f"Found ASIN: {asin}")
             return asin
+        
+        if data.get('request_info', {}).get('success') == False:
+            message = data['request_info'].get('message', 'Unknown API Error')
+            log.error(f"Rainforest API Error: {message}")
+            return f"ERROR: {message}"
+
         return None
     except Exception as e:
         log.error(f"Search API request failed: {e}")
@@ -72,9 +78,10 @@ def fetch_rainforest_reviews(asin: str, api_key: str, max_reviews: int) -> list[
         data = resp.json()
         
         # Check if the API threw an internal error message
-        if data.get('request_info', {}).get('success') is False:
-            log.error(f"API Error: {data['request_info'].get('message')}")
-            return []
+        if data.get('request_info', {}).get('success') == False:
+            message = data['request_info'].get('message', 'Unknown API Error')
+            log.error(f"API Error: {message}")
+            return f"ERROR: {message}", None
 
         top_reviews = data.get('product', {}).get('top_reviews', [])
         
@@ -206,13 +213,41 @@ def main():
 
     try:
         # ── 1. Resolve ASIN ───────────────────────────────────────────────
-        asin = args.asin or search_rainforest_for_asin(args.reference, api_key)
+        # Clean the reference/search query to be more Amazon-friendly
+        # Remove common Tunisian suffixes or long descriptions
+        search_query = args.reference
+        if not args.asin:
+            # Take only the first 4 words for a much broader search
+            words = args.reference.split(' ')
+            if len(words) > 4:
+                search_query = ' '.join(words[:4])
+            
+            # Remove noise like "Avec Sacoche Offerte" and model-specific noise
+            noise = ["Avec", "Sacoche", "Offerte", "/", "-", "|", "Go", "SSD", "Windows"]
+            for n in noise:
+                search_query = search_query.replace(n, " ").strip()
+            
+            # Remove double spaces
+            while "  " in search_query:
+                search_query = search_query.replace("  ", " ")
+            
+            log.info(f"Cleaned search query (Aggressive): {search_query}")
+
+        asin = args.asin or search_rainforest_for_asin(search_query, api_key)
 
         if not asin:
             print(json.dumps({
                 "success": False,
                 "productId": args.product_id,
-                "error": f"Could not find Amazon product for reference via API: {args.reference}",
+                "error": f"Could not find Amazon product matching: {search_query}",
+            }))
+            sys.exit(0)
+        
+        if isinstance(asin, str) and asin.startswith("ERROR:"):
+            print(json.dumps({
+                "success": False,
+                "productId": args.product_id,
+                "error": asin.replace("ERROR: ", ""),
             }))
             sys.exit(0)
 
@@ -222,6 +257,14 @@ def main():
             reviews, bsr = result
         else:
             reviews, bsr = result, None
+
+        if isinstance(reviews, str) and reviews.startswith("ERROR:"):
+            print(json.dumps({
+                "success": False,
+                "productId": args.product_id,
+                "error": reviews.replace("ERROR: ", ""),
+            }))
+            sys.exit(0)
 
         if not reviews:
             print(json.dumps({

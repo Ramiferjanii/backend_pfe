@@ -66,6 +66,23 @@ router.post('/fetch/:productId', auth, async (req, res) => {
         });
     } catch (err) {
         console.error('[Reviews API] fetch error:', err.message);
+        
+        // Check if it's a "known" failure (like product not found)
+        if (err.message.includes("Could not find") || err.message.includes("No reviews found")) {
+            return res.status(404).json({
+                error: 'Product Not Found on Amazon',
+                details: err.message,
+            });
+        }
+
+        // Check for account suspension or quota issues
+        if (err.message.includes("suspended") || err.message.includes("Trial") || err.message.includes("Plan")) {
+            return res.status(403).json({
+                error: 'Amazon API Access Denied',
+                details: err.message,
+            });
+        }
+
         return res.status(500).json({
             error: 'Review fetch failed',
             details: err.message,
