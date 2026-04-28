@@ -22,7 +22,9 @@ function resolvePythonPath() {
     const venvUnix = path.join(__dirname, '../../.venv/bin/python');
     if (fs.existsSync(venvWin)) return venvWin;
     if (fs.existsSync(venvUnix)) return venvUnix;
-    return 'python';   // system fallback
+    
+    // Check for python3 first (common in Linux/Render)
+    return 'python3'; 
 }
 
 const SCRAPER_SCRIPT = path.join(

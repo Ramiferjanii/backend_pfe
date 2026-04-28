@@ -28,6 +28,9 @@ async function scrapeWebsiteTask(websiteId, mode = 'auto', url, filters = {}, us
             pythonPath = venvPath;
         } else if (fs.existsSync(venvPathUnix)) {
             pythonPath = venvPathUnix;
+        } else {
+            // Check for python3 first (common in Linux/Render)
+            pythonPath = 'python3';
         }
 
         const scriptPath = path.join(__dirname, '../python_scraper/scraper.py');
