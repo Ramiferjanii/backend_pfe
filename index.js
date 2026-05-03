@@ -74,7 +74,16 @@ app.get('/', (req, res) => {
                 fetchBatch: 'POST /api/reviews/fetch-batch',
                 list: 'GET  /api/reviews/:productId',
                 summary: 'GET  /api/reviews/:productId/summary',
+                ratingDistribution: 'GET /api/reviews/:productId/rating-distribution',
+                aiSummary: 'GET /api/reviews/:productId/ai-summary',
                 delete: 'DELETE /api/reviews/:productId'
+            },
+            dashboard: {
+                stats: 'GET /api/dashboard/stats',
+                priceCategory: 'GET /api/dashboard/price-category',
+                insights: 'GET /api/dashboard/insights',
+                reviewActivity: 'GET /api/dashboard/review-activity',
+                priceRatingScatter: 'GET /api/dashboard/price-rating-scatter'
             }
         }
     });
