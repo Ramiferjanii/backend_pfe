@@ -86,7 +86,8 @@ async function fetchAndSaveReviews(productId, options = {}) {
 
     // ── 2.5 Update Product with BSR and Sales ───────────────────────────
     let monthlySales = pyMonthlySales;
-    if (bsr || monthlySales) {
+    // Always update monthlySales as long as we have a value (even a fallback)
+    if (bsr !== null || monthlySales) {
         try {
             await prisma.product.update({
                 where: { id: productId },

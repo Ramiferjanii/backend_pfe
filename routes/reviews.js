@@ -328,41 +328,46 @@ router.get('/:productId/ai-summary', auth, async (req, res) => {
 });
 
 
-// ─── GET /api/reviews/:productId/trends ────────────────────────────────────
+// ─── GET /api/reviews/:productId/rating-distribution ───────────────────────
 /**
- * Returns review volume over time (grouped by year).
+ * Returns the real count of reviews grouped by star rating (1–5)
+ * for a specific product. Used by the Rating Distribution histogram.
  */
-router.get('/:productId/trends', auth, async (req, res) => {
+router.get('/:productId/rating-distribution', auth, async (req, res) => {
     const { productId } = req.params;
 
+    // Ownership check
+    const product = await prisma.product.findUnique({
+        where: { id: productId },
+        select: { userId: true },
+    });
+
+    if (!product) return res.status(404).json({ error: 'Product not found' });
+    if (product.userId && product.userId !== req.user.id) {
+        return res.status(403).json({ error: 'Access denied' });
+    }
+
     try {
-        const reviews = await prisma.review.findMany({
-            where: { productId },
-            select: { reviewDate: true },
+        const ratingGroups = await prisma.review.groupBy({
+            by: ['rating'],
+            where: { productId, rating: { not: null } },
+            _count: { id: true },
+            orderBy: { rating: 'asc' },
         });
 
-        // Simple year extraction from string (e.g., "January 1, 2024")
-        const yearCounts = {};
-        reviews.forEach(r => {
-            if (r.reviewDate) {
-                const match = r.reviewDate.match(/\d{4}/); // find 4 consecutive digits
-                if (match) {
-                    const year = match[0];
-                    yearCounts[year] = (yearCounts[year] || 0) + 1;
-                }
-            }
+        // Always return all 5 stars, filling gaps with 0
+        const distribution = [1, 2, 3, 4, 5].map(star => {
+            const matchingGroups = ratingGroups.filter(g => Math.floor(g.rating || 0) === star);
+            const totalCount = matchingGroups.reduce((sum, g) => sum + g._count.id, 0);
+            return {
+                rating: star,
+                count: totalCount,
+            };
         });
 
-        // Convert to sorted array for chart
-        const sortedYears = Object.keys(yearCounts).sort();
-        const trends = sortedYears.map(year => ({
-            year,
-            count: yearCounts[year]
-        }));
-
-        return res.json({ success: true, trends });
+        return res.json({ success: true, productId, distribution });
     } catch (err) {
-        console.error('[Reviews API] Trends error:', err.message);
+        console.error('[Reviews API] rating-distribution error:', err.message);
         return res.status(500).json({ error: 'Database error', details: err.message });
     }
 });

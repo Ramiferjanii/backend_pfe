@@ -231,30 +231,23 @@ router.get('/insights', auth, async (req, res) => {
 });
 
 /**
- * GET: Estimated Sales Volume
- * Derives estimated unit sales from review counts per time bucket.
+ * GET: Monthly Review Activity
+ * Returns the real count of reviews scraped per month, optionally grouped by
+ * product category or domain.
  *
  * Query params:
- *  - months  (number, default 6)   — how many past months to include
+ *  - months  (number, default 6)    — how many past months to include
  *  - groupBy (string, default none) — optional: "category" | "domain"
- *
- * Formula: estimated_sales = (review_count_in_period + 2) * 85
- * (same multiplier used in /stats for consistency)
  */
-router.get('/sales-volume', auth, async (req, res) => {
+router.get('/review-activity', auth, async (req, res) => {
     try {
-        const userId    = req.user.id;
-        const months    = Math.min(Math.max(parseInt(req.query.months) || 6, 1), 24);
-        const groupBy   = req.query.groupBy; // "category" | "domain" | undefined
-
-        const since = new Date();
-        since.setMonth(since.getMonth() - (months - 1));
-        since.setDate(1);
-        since.setHours(0, 0, 0, 0);
+        const userId  = req.user.id;
+        const months  = Math.min(Math.max(parseInt(req.query.months) || 6, 1), 24);
+        const groupBy = req.query.groupBy; // "category" | "domain" | undefined
 
         const monthNames = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
 
-        // Build the ordered month-label list
+        // Build ordered month-label list
         const monthLabels = [];
         for (let i = months - 1; i >= 0; i--) {
             const d = new Date();
@@ -262,59 +255,30 @@ router.get('/sales-volume', auth, async (req, res) => {
             monthLabels.push(`${monthNames[d.getMonth()]} ${d.getFullYear()}`);
         }
 
+        const since = new Date();
+        since.setMonth(since.getMonth() - (months - 1));
+        since.setDate(1);
+        since.setHours(0, 0, 0, 0);
+
         if (!groupBy) {
-            // ── Simple: total across all products ──────────────────────────
-            const products = await prisma.product.findMany({
-                where: { userId },
-                select: { 
-                    monthlySales: true,
-                    reviews: {
-                        where: { createdAt: { gte: since } },
-                        select: { createdAt: true }
-                    }
-                }
+            // ── Simple: total review count per month ──────────────────────
+            const reviews = await prisma.review.findMany({
+                where: { product: { userId }, createdAt: { gte: since } },
+                select: { createdAt: true }
             });
 
             const buckets = {};
             monthLabels.forEach(l => { buckets[l] = 0; });
-            
-            products.forEach(p => {
-                // Heuristic: If not analyzed yet (null monthlySales), use a baseline of 15-45 units/mo
-                const pMonthSales = p.monthlySales || (p.id ? (p.id.charCodeAt(0) % 30) + 15 : 20);
-                const pReviews = p.reviews || [];
-                const pBuckets = {};
-                monthLabels.forEach(l => { pBuckets[l] = 0; });
-                
-                pReviews.forEach(r => {
-                    const d = new Date(r.createdAt);
-                    const key = `${monthNames[d.getMonth()]} ${d.getFullYear()}`;
-                    if (pBuckets[key] !== undefined) pBuckets[key]++;
-                });
 
-                const totalRev = pReviews.length;
-                
-                monthLabels.forEach((l, idx) => {
-                    const progress = (idx + 1) / monthLabels.length;
-                    
-                    // Natural noise that changes per product and per month
-                    const noise = Math.sin((idx * 1.5) + (p.id ? p.id.charCodeAt(idx % p.id.length) : 0)) * 0.15;
-                    const baselineScale = 0.7 + (0.3 * progress) + noise;
-
-                    if (totalRev > 0) {
-                        // Weighted distribution based on real review timing
-                        const reviewWeight = pBuckets[l] / totalRev;
-                        buckets[l] += Math.round(pMonthSales * ((reviewWeight * 0.8) + (baselineScale * 0.2)));
-                    } else {
-                        // Organic building of sales volume for un-reviewed products
-                        buckets[l] += Math.round(pMonthSales * baselineScale);
-                    }
-                });
+            reviews.forEach(r => {
+                const d = new Date(r.createdAt);
+                const key = `${monthNames[d.getMonth()]} ${d.getFullYear()}`;
+                if (key in buckets) buckets[key]++;
             });
 
             const data = monthLabels.map(month => ({
                 month,
-                estimatedSales: buckets[month],
-                reviewCount: 0 // Optional, we omit actual count here to focus on real sales
+                reviewCount: buckets[month]
             }));
 
             return res.json({ success: true, groupBy: null, months, data });
@@ -326,79 +290,100 @@ router.get('/sales-volume', auth, async (req, res) => {
             return res.status(400).json({ error: `Invalid groupBy. Use: ${allowedGroups.join(', ')}` });
         }
 
-        const products = await prisma.product.findMany({
-            where: { userId },
-            select: { 
-                monthlySales: true,
-                [groupBy]: true,
-                reviews: {
-                    where: { createdAt: { gte: since } },
-                    select: { createdAt: true }
-                }
+        // Fetch reviews joined with the product groupBy field
+        const reviews = await prisma.review.findMany({
+            where: { product: { userId }, createdAt: { gte: since } },
+            select: {
+                createdAt: true,
+                product: { select: { [groupBy]: true } }
             }
         });
 
         const groupMap = {};
 
-        products.forEach(p => {
-            const groupVal = p[groupBy] || 'Unknown';
-            // Baseline for unanalyzed products
-            const pMonthSales = p.monthlySales || (p.id ? (p.id.charCodeAt(0) % 30) + 15 : 20);
-            const pReviews = p.reviews || [];
-            
+        reviews.forEach(r => {
+            const groupVal = r.product?.[groupBy] || 'Unknown';
+            const d = new Date(r.createdAt);
+            const key = `${monthNames[d.getMonth()]} ${d.getFullYear()}`;
+
             if (!groupMap[groupVal]) {
                 groupMap[groupVal] = {};
                 monthLabels.forEach(l => { groupMap[groupVal][l] = 0; });
             }
-
-            const pBuckets = {};
-            monthLabels.forEach(l => { pBuckets[l] = 0; });
-            
-            pReviews.forEach(r => {
-                const d = new Date(r.createdAt);
-                const key = `${monthNames[d.getMonth()]} ${d.getFullYear()}`;
-                if (pBuckets[key] !== undefined) pBuckets[key]++;
-            });
-
-            const totalRev = pReviews.length;
-            
-            monthLabels.forEach((l, idx) => {
-                const progress = (idx + 1) / monthLabels.length;
-                const noise = Math.sin((idx * 1.5) + (p.id ? p.id.charCodeAt(idx % p.id.length) : 0)) * 0.15;
-                const baselineScale = 0.7 + (0.3 * progress) + noise;
-
-                if (totalRev > 0) {
-                    const reviewWeight = pBuckets[l] / totalRev;
-                    groupMap[groupVal][l] += Math.round(pMonthSales * ((reviewWeight * 0.8) + (baselineScale * 0.2)));
-                } else {
-                    groupMap[groupVal][l] += Math.round(pMonthSales * baselineScale);
-                }
-            });
+            if (key in groupMap[groupVal]) groupMap[groupVal][key]++;
         });
 
-        // Format into array of series
         const series = Object.keys(groupMap).map(groupValue => ({
             groupValue,
             data: monthLabels.map(month => ({
                 month,
-                estimatedSales: groupMap[groupValue][month],
-                reviewCount: 0
+                reviewCount: groupMap[groupValue][month] || 0
             }))
         }));
 
-        // Also provide a flat "totals" view per month
         const totals = monthLabels.map(month => {
-            const reviewCount = Object.values(groupMap).reduce(
-                (sum, g) => sum + (g[month] || 0), 0
+            const sum = Object.values(groupMap).reduce(
+                (acc, g) => acc + (g[month] || 0), 0
             );
-            return { month, estimatedSales: reviewCount * 85, reviewCount };
+            return { month, reviewCount: sum };
         });
 
         return res.json({ success: true, groupBy, months, series, totals });
 
     } catch (error) {
-        console.error('[Dashboard Route] Error fetching sales volume:', error);
-        res.status(500).json({ error: 'Failed to load sales volume data' });
+        console.error('[Dashboard Route] Error fetching review activity:', error);
+        res.status(500).json({ error: 'Failed to load review activity data' });
+    }
+});
+
+/**
+ * GET: Price vs Rating Scatter Plot Data
+ * Returns product price vs its average rating to identify market positioning.
+ */
+router.get('/price-rating-scatter', auth, async (req, res) => {
+    try {
+        const userId = req.user.id;
+        
+        const products = await prisma.product.findMany({
+            where: { 
+                userId, 
+                priceAmount: { not: null }
+            },
+            select: {
+                id: true,
+                name: true,
+                priceAmount: true,
+                category: true,
+                reviews: {
+                    select: { rating: true }
+                }
+            }
+        });
+
+        // Calculate average rating per product and filter out products with no reviews/ratings
+        const scatterData = products
+            .map(p => {
+                const validReviews = p.reviews.filter(r => r.rating != null);
+                if (validReviews.length === 0) return null;
+                
+                const avgRating = validReviews.reduce((sum, r) => sum + r.rating, 0) / validReviews.length;
+                
+                return {
+                    id: p.id,
+                    name: p.name,
+                    price: p.priceAmount,
+                    rating: parseFloat(avgRating.toFixed(2)),
+                    category: p.category || 'Uncategorized',
+                    reviewCount: validReviews.length
+                };
+            })
+            .filter(item => item !== null);
+
+        res.json({ success: true, data: scatterData });
+
+    } catch (error) {
+        console.error('[Dashboard Route] Error fetching scatter data:', error);
+        res.status(500).json({ error: 'Failed to load scatter plot data' });
     }
 });
 

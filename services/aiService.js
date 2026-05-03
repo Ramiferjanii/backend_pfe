@@ -48,7 +48,7 @@ Do NOT output markdown code blocks. Output ONLY a raw JSON object string with th
                 { role: 'system', content: systemPrompt },
                 { role: 'user', content: `Here are the reviews:\n\n${reviewsText}` }
             ],
-            model: 'llama-3.3-70b-versatile', // Extremely fast Llama 3.3 model on Groq
+            model: 'llama-3.1-8b-instant', // Extremely fast Llama 3.3 model on Groq
             temperature: 0.3, // keep the AI focused
             response_format: { type: "json_object" }, // Ensures output is strictly JSON
         });
@@ -108,7 +108,7 @@ Overview/Details: ${product.overview}`;
                 { role: 'system', content: systemPrompt },
                 { role: 'user', content: userPrompt }
             ],
-            model: 'llama-3.3-70b-versatile',
+            model: 'llama-3.1-8b-instant',
             temperature: 0.2, // very analytical
             response_format: { type: "json_object" }, 
         });
@@ -175,7 +175,7 @@ Goal: Answer their questions about these products, give recommendations, or prov
         
         const llm = new ChatGroq({
             apiKey: process.env.GROQ_API_KEY,
-            model: "llama-3.3-70b-versatile",
+            model: "llama-3.1-8b-instant",
             temperature: 0.6
         });
 
@@ -236,7 +236,7 @@ Output ONLY a raw JSON object string with this exact structure:
                 { role: 'system', content: systemPrompt },
                 { role: 'user', content: userPrompt }
             ],
-            model: 'llama-3.3-70b-versatile',
+            model: 'llama-3.1-8b-instant',
             temperature: 0.4,
             response_format: { type: "json_object" },
         });
@@ -284,7 +284,7 @@ The output MUST be a JSON object with this exact structure:
                 { role: 'system', content: systemPrompt },
                 { role: 'user', content: userPrompt }
             ],
-            model: 'llama-3.3-70b-versatile',
+            model: 'llama-3.1-8b-instant',
             temperature: 0.5,
             response_format: { type: "json_object" },
         });
@@ -331,7 +331,7 @@ Overview: ${overview || 'None'}`;
                 { role: 'system', content: systemPrompt },
                 { role: 'user', content: userPrompt }
             ],
-            model: 'llama-3.3-70b-versatile',
+            model: 'llama-3.1-8b-instant',
             temperature: 0.1,
             response_format: { type: "json_object" },
         });
