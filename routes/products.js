@@ -45,6 +45,33 @@ router.get('/export/:websiteId', auth, async (req, res) => {
     }
 });
 
+// GET: Fetch unique product categories (Protected)
+router.get('/categories', auth, async (req, res) => {
+    try {
+        const categories = await prisma.product.findMany({
+            where: {
+                userId: req.user.id,
+                category: {
+                    not: null,
+                }
+            },
+            select: {
+                category: true,
+            },
+            distinct: ['category'],
+        });
+
+        const categoryList = categories
+            .map(c => c.category)
+            .filter(c => c !== null && c.trim() !== '');
+
+        res.json({ categories: categoryList });
+    } catch (error) {
+        console.error('Error fetching categories:', error);
+        res.status(500).json({ error: 'Server error' });
+    }
+});
+
 // GET: List products with filtering (Protected)
 router.get('/', auth, async (req, res) => {
     try {

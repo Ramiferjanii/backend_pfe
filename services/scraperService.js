@@ -133,6 +133,15 @@ async function scrapeWebsiteTask(websiteId, mode = 'auto', url, filters = {}, us
 
                 // 3. Create/Update Product using Prisma
                 let savedCount = 0;
+                const { generateCategoryForProduct } = require('./aiService');
+                const standardCategories = [
+                    'Phones & Tablets', 'Computers & Laptops', 'TV & Audio', 
+                    'Home Appliances', 'Gaming', 'Networking', 
+                    'Accessories', 'Office Supplies', 'Other'
+                ];
+                const sleep = (ms) => new Promise(r => setTimeout(r, ms));
+                const savedProductIds = []; // Track saved IDs for post-pass
+
                 for (const item of items) {
                     try {
                         let itemUrl = item.url || url;
@@ -146,6 +155,23 @@ async function scrapeWebsiteTask(websiteId, mode = 'auto', url, filters = {}, us
                             }
                         });
 
+                        // Auto-Categorize with AI — add delay to avoid Groq rate limits
+                        let finalCategory = item.category || '';
+                        if (!standardCategories.includes(finalCategory)) {
+                            try {
+                                await sleep(150); // prevent rate-limit on batch scrapes
+                                const aiCat = await generateCategoryForProduct(
+                                    item.name || 'Unknown',
+                                    `${item.overview || ''} ${item.category || ''}`
+                                );
+                                if (aiCat && aiCat !== "Unknown") {
+                                    finalCategory = aiCat;
+                                    console.log(`[SCRAPER] AI categorized "${item.name?.substring(0, 40)}" => ${finalCategory}`);
+                                }
+                            } catch (e) {
+                                console.error('[SCRAPER] AI categorization failed (will retry in post-pass):', e.message);
+                            }
+                        }
 
                         const productData = {
                             name: item.name || 'Unknown',
@@ -154,7 +180,7 @@ async function scrapeWebsiteTask(websiteId, mode = 'auto', url, filters = {}, us
                             oldPrice: item.oldPrice || '',
                             reference: item.reference || '',
                             overview: item.overview || '',
-                            category: item.category || '',
+                            category: finalCategory,
                             image: item.image || '',
                             websiteId: websiteId,
                             scrapedAt: now,
@@ -162,26 +188,46 @@ async function scrapeWebsiteTask(websiteId, mode = 'auto', url, filters = {}, us
                             domain: item.domain || data.domain
                         };
 
+                        let savedId = null;
                         if (existingProduct) {
                             await prisma.product.update({
                                 where: { id: existingProduct.id },
                                 data: productData
                             });
+                            savedId = existingProduct.id;
                         } else {
-                            await prisma.product.create({
-                                data: {
-                                    ...productData,
-                                    url: itemUrl
-                                }
+                            const created = await prisma.product.create({
+                                data: { ...productData, url: itemUrl }
                             });
+                            savedId = created.id;
                         }
+                        if (savedId) savedProductIds.push({ id: savedId, name: item.name, overview: item.overview, category: finalCategory });
                         savedCount++;
                     } catch (err) {
                         console.error(`[SCRAPER] Failed to save item "${item.name}":`, err.message);
                     }
                 }
 
+                // Post-scrape pass: fix any products that still have empty categories
+                const uncategorized = savedProductIds.filter(p => !standardCategories.includes(p.category));
+                if (uncategorized.length > 0) {
+                    console.log(`[SCRAPER] Post-pass: re-categorizing ${uncategorized.length} products...`);
+                    for (const p of uncategorized) {
+                        try {
+                            await sleep(200);
+                            const aiCat = await generateCategoryForProduct(p.name || 'Unknown', p.overview || '');
+                            if (aiCat && aiCat !== 'Unknown') {
+                                await prisma.product.update({ where: { id: p.id }, data: { category: aiCat } });
+                                console.log(`[SCRAPER] Post-pass: "${p.name?.substring(0, 40)}" => ${aiCat}`);
+                            }
+                        } catch (e) {
+                            console.error('[SCRAPER] Post-pass categorization failed:', e.message);
+                        }
+                    }
+                }
+
                 console.log(`[SCRAPER] ${websiteId}: Successfully saved ${savedCount} products to database.`);
+
 
                 // --- Notification & Email System ---
                 if (userId) {

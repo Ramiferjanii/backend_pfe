@@ -31,11 +31,8 @@ async function sendScrapingNotification(toEmail, websiteUrl, items) {
       return;
   }
 
-  const mailOptions = {
-    from: process.env.EMAIL_USER,
-    to: toEmail,
-    subject: `Scraping Completed: ${itemCount} items found`,
-    html: `
+  let subject = `Scraping Completed: ${itemCount} items found`;
+  let htmlBody = `
       <div style="font-family: Arial, sans-serif; padding: 20px;">
         <h2 style="color: #4F46E5;">Scraping Task Finished</h2>
         <p>Your scraping task for <strong>${websiteUrl}</strong> has completed successfully.</p>
@@ -43,7 +40,26 @@ async function sendScrapingNotification(toEmail, websiteUrl, items) {
         <br/>
         <a href="http://localhost:3000/dashboard" style="background-color: #4F46E5; color: white; padding: 10px 20px; text-decoration: none; border-radius: 5px;">View Dashboard</a>
       </div>
-    `,
+  `;
+
+  if (itemCount === 0) {
+    subject = `Scraping Alert: 0 items found`;
+    htmlBody = `
+      <div style="font-family: Arial, sans-serif; padding: 20px;">
+        <h2 style="color: #DC2626;">Scraping Task Alert</h2>
+        <p>Your scraping task for <strong>${websiteUrl}</strong> has finished, but <strong>0 products were found</strong>.</p>
+        <p>This could indicate that the URL is invalid, the website structure has changed, or the target platform blocked the request (Anti-bot protection).</p>
+        <br/>
+        <a href="http://localhost:3000/dashboard" style="background-color: #DC2626; color: white; padding: 10px 20px; text-decoration: none; border-radius: 5px;">View Dashboard</a>
+      </div>
+    `;
+  }
+
+  const mailOptions = {
+    from: process.env.EMAIL_USER,
+    to: toEmail,
+    subject: subject,
+    html: htmlBody,
     attachments: []
   };
 
