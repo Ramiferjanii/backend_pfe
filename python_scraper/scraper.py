@@ -123,14 +123,14 @@ def extract_reference_from_url(url, domain):
                 if len(candidate) <= 2 and len(parts) > 1:
                     candidate = parts[-2] + "-" + candidate
                 ref = candidate
-        elif "wiki.tn" in domain:
+        elif "tunisianet.com.tn" in domain:
+            # URL format: .../p/12345-slug-name.html
             filename = clean_url.split('/')[-1]
             slug = filename.replace('.html', '')
             parts = slug.split('-')
-            for p in reversed(parts):
-                if any(c.isdigit() for c in p) and any(c.isalpha() for c in p) and len(p) > 5:
-                    ref = p
-                    break
+            if parts:
+                # The ID is usually the first part
+                ref = parts[0]
     except:
         pass
     return ref

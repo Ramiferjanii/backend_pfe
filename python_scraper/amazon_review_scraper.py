@@ -1,12 +1,13 @@
 """
 amazon_review_scraper.py
 ------------------------
-Fetches Amazon product reviews using Rainforest API (a dedicated Amazon data API),
-ensuring 100% reliability by bypassing Amazon bot detection completely.
+Fetches Amazon product reviews using RapidAPI,
+providing sentiment analysis.
 
 Requirements:
-- RAINFOREST_API_KEY in the environment (.env file in backend)
+- RAPIDAPI_KEY in the environment (.env file in backend)
 """
+
 
 import os
 import sys
@@ -60,7 +61,7 @@ def search_amazon_for_asin(reference: str, api_key: str) -> str | None:
         log.error(f"Search API request failed: {e}")
         return None
 
-def fetch_amazon_reviews(asin: str, api_key: str, max_reviews: int) -> tuple[list[dict], int | None]:
+def fetch_amazon_reviews(asin: str, api_key: str, max_reviews: int) -> list[dict]:
     """Fetch reviews for a given ASIN using RapidAPI."""
     log.info(f"Fetching reviews for ASIN {asin} via RapidAPI (max: {max_reviews})")
     
@@ -72,7 +73,6 @@ def fetch_amazon_reviews(asin: str, api_key: str, max_reviews: int) -> tuple[lis
     }
     
     reviews = []
-    bsr = None
     
     try:
         resp = requests.get(url, headers=headers, params=querystring, timeout=30)
@@ -110,26 +110,11 @@ def fetch_amazon_reviews(asin: str, api_key: str, max_reviews: int) -> tuple[lis
     except Exception as e:
         log.error(f"Review API request failed: {e}")
         
-    return reviews[:max_reviews], bsr
+    return reviews[:max_reviews]
 
-def extract_sales_from_string(text: str) -> int | None:
-    """Extracts numeric sales from '10K+ bought in past month' or '500+ bought in past month'"""
-    if not text: return None
-    
-    # "10K+ bought in past month" -> 10000
-    match_k = re.search(r'(\d+)[kK]\+?\s+bought', text.lower())
-    if match_k:
-        return int(match_k.group(1)) * 1000
-    
-    # "500+ bought in past month" -> 500
-    match_num = re.search(r'(\d+)\+?\s+bought', text.lower())
-    if match_num:
-        return int(match_num.group(1))
-    
-    return None
 
 def fetch_amazon_stock(asin: str, api_key: str) -> dict | None:
-    """Fetch product details (stock/price/sales_volume/bsr) using RapidAPI product-details."""
+    """Fetch product details (stock/price/rating) using RapidAPI product-details."""
     url = f"{RAPIDAPI_BASE_URL}/product-details"
     querystring = {"asin": asin, "country": "US"}
     headers = {
@@ -141,33 +126,15 @@ def fetch_amazon_stock(asin: str, api_key: str) -> dict | None:
         data = resp.json()
         if data.get('status') == 'OK':
             prod = data.get('data', {})
-            
-            # Extract BSR
-            bsr = None
-            raw_bsr = prod.get('best_sellers_rank')
-            if isinstance(raw_bsr, list) and len(raw_bsr) > 0:
-                bsr = raw_bsr[0].get('rank')
-                
             return {
                 "stock_level": prod.get('product_availability', 'In Stock'),
                 "price": prod.get('product_price'),
                 "rating": prod.get('product_star_rating'),
-                "sales_volume_text": prod.get('sales_volume'),
-                "extracted_bsr": bsr
             }
     except Exception as e:
         log.error(f"Stock API request failed: {e}")
     return None
 
-def estimate_sales_from_bsr(rank: int) -> int:
-    """Estimates monthly unit sales based on BSR using a standard power-law formula."""
-    if not rank or rank <= 0: return 0
-    # Formula derived from common Electronics/Home category trends
-    # Sales ≈ a * (Rank ^ b)
-    a = 280000 
-    b = -0.78
-    estimated = a * (rank ** b)
-    return int(max(5, min(estimated, 50000))) # Realistic bounds
 
 def analyze_sentiment(reviews: list[dict]) -> list[dict]:
     """Run VADER on each review. Adds: sentiment, compound, sentimentScores."""
@@ -274,11 +241,7 @@ def main():
             sys.exit(0)
 
         # ── 2. Fetch reviews ─────────────────────────────────────────────
-        result = fetch_amazon_reviews(asin, api_key, args.max_reviews)
-        if isinstance(result, tuple) and len(result) == 2:
-            reviews, bsr = result
-        else:
-            reviews, bsr = result, None
+        reviews = fetch_amazon_reviews(asin, api_key, args.max_reviews)
 
         if isinstance(reviews, str) and reviews.startswith("ERROR:"):
             print(json.dumps({
@@ -293,7 +256,6 @@ def main():
                 "success": False,
                 "productId": args.product_id,
                 "asin": asin,
-                "bsr": bsr,
                 "error": "No reviews found for this ASIN on Amazon.",
             }))
             sys.exit(0)
@@ -303,37 +265,14 @@ def main():
 
         # ── 4. RapidAPI Stock/Details ─────────────────────────────────────
         stock_data = fetch_amazon_stock(asin, api_key)
-        
-        # ── 5. Market Sales Calculation ───────────────────────────────────
-        actual_bsr = bsr
-        if stock_data and stock_data.get('extracted_bsr'):
-            actual_bsr = stock_data['extracted_bsr']
-            
-        monthly_sales = 0
-        
-        # Priority 1: Exact sales volume text from Amazon badge
-        if stock_data and stock_data.get('sales_volume_text'):
-            monthly_sales = extract_sales_from_string(stock_data['sales_volume_text']) or 0
-            
-        # Priority 2: Calculate from BSR
-        if not monthly_sales and actual_bsr:
-            monthly_sales = estimate_sales_from_bsr(actual_bsr)
-            
-        # Priority 3: Fallback so we don't save 0
-        if not monthly_sales:
-            monthly_sales = len(reviews) * 85
-            if not monthly_sales:
-                monthly_sales = (sum(ord(c) for c in asin) % 30) + 15
 
-        # ── 6. Build summary ──────────────────────────────────────────────
+        # ── 5. Build summary ──────────────────────────────────────────────
         summary = build_summary(enriched)
 
         print(json.dumps({
             "success":       True,
             "productId":     args.product_id,
             "asin":          asin,
-            "bsr":           actual_bsr,
-            "monthlySales":  monthly_sales,
             "stockInfo":     stock_data,
             "reviews":       enriched,
             "summary":       summary,
