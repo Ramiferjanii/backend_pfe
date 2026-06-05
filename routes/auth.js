@@ -12,42 +12,39 @@ router.post('/sync-user', async (req, res) => {
     }
 
     try {
-        // Check if user exists by email first (to handle email conflicts)
-        let existingUser = await prisma.user.findUnique({ where: { email } });
-
-        if (!existingUser) {
-            // Then check by ID
-            existingUser = await prisma.user.findUnique({ where: { id } });
-        }
-
         const dataToSave = {
-            email: email,
             name: name || full_name || email.split('@')[0],
-            location: location !== undefined ? location : undefined,
         };
-        if (image) dataToSave.image = image;
+        if (location !== undefined) dataToSave.location = location;
+        if (image !== undefined) dataToSave.image = image || null;
 
-        let user;
-        if (existingUser) {
-            // Update existing user
-            user = await prisma.user.update({
-                where: { id: existingUser.id },
-                data: dataToSave,
-            });
-        } else {
-            // Create new user
-            user = await prisma.user.create({
-                data: {
-                    id: id,
-                    ...dataToSave
-                },
-            });
+        // First, check if there's an old record with same email but different ID
+        // (happens when user is deleted from Supabase and re-registers)
+        const existingByEmail = await prisma.user.findUnique({ where: { email } });
+        if (existingByEmail && existingByEmail.id !== id) {
+            console.log(`[AUTH] User re-created in Supabase. Old ID: ${existingByEmail.id}, New ID: ${id}. Migrating...`);
+            await prisma.user.delete({ where: { id: existingByEmail.id } });
         }
+
+        // Atomic upsert — no race condition possible
+        const user = await prisma.user.upsert({
+            where: { id },
+            update: {
+                email,
+                ...dataToSave,
+            },
+            create: {
+                id,
+                email,
+                ...dataToSave,
+            },
+        });
+
         console.log(`[AUTH] Synced user: ${user.id}`);
         res.json({ success: true, user });
     } catch (error) {
-        console.error("[AUTH] Error syncing user:", error);
-        res.status(500).json({ error: "Failed to sync user" });
+        console.error("[AUTH] Error syncing user:", error.message);
+        res.status(500).json({ error: "Failed to sync user", details: error.message });
     }
 });
 

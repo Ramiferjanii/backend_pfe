@@ -4,23 +4,33 @@ const prisma = require('../lib/prisma');
 const { scrapeWebsiteTask } = require('../services/scraperService');
 const auth = require('../middleware/auth');
 
-// Helper to format website for frontend
-const formatWebsite = (site) => ({
-    id: site.id,
-    name: site.name,
-    url: site.url,
-    description: site.description,
-    category: site.category,
-    scrapeFrequency: site.scrapeFrequency,
-    isActive: site.isActive,
-    status: site.lastScraped ? 'Active' : 'Pending',
-    lastScraped: site.lastScraped,
-    scrapedData: site.scrapedData || {},
-    productCount: site.scrapedData && site.scrapedData.count ? site.scrapedData.count : 0,
-    userId: site.userId,
-    createdAt: site.createdAt,
-    updatedAt: site.updatedAt
-});
+const formatWebsite = (site, userId = null) => {
+    let scrapedData = {};
+    let lastScraped = null;
+
+    // Check if site.scrapedData has a key for the user
+    if (userId && site.scrapedData && typeof site.scrapedData === 'object' && site.scrapedData[userId]) {
+        lastScraped = site.scrapedData[userId].lastScraped || null;
+        scrapedData = site.scrapedData[userId].data || {};
+    }
+
+    return {
+        id: site.id,
+        name: site.name,
+        url: site.url,
+        description: site.description,
+        category: site.category,
+        scrapeFrequency: site.scrapeFrequency,
+        isActive: site.isActive,
+        status: lastScraped ? 'Active' : 'Pending',
+        lastScraped: lastScraped,
+        scrapedData: scrapedData,
+        productCount: scrapedData && scrapedData.count ? scrapedData.count : 0,
+        userId: site.userId,
+        createdAt: site.createdAt,
+        updatedAt: site.updatedAt
+    };
+};
 
 // GET: List all websites (Scoped to User)
 router.get('/', auth, async (req, res) => {
@@ -50,7 +60,7 @@ router.get('/', auth, async (req, res) => {
         ]);
 
         res.json({
-            websites: websites.map(formatWebsite),
+            websites: websites.map(site => formatWebsite(site, req.user.id)),
             pagination: {
                 total,
                 page: pPage,
@@ -75,7 +85,7 @@ router.get('/:id', auth, async (req, res) => {
         if (!website) return res.status(404).json({ error: 'Website not found' });
 
         // Allow all users to view global website platforms
-        res.json({ website: formatWebsite(website) });
+        res.json({ website: formatWebsite(website, req.user.id) });
     } catch (error) {
         res.status(500).json({ error: error.message });
     }
@@ -121,7 +131,7 @@ router.post('/', auth, async (req, res) => {
 
         res.status(201).json({
             message: 'Website created successfully',
-            website: formatWebsite(newWebsite)
+            website: formatWebsite(newWebsite, req.user.id)
         });
     } catch (error) {
         console.error('Error creating website:', error);
@@ -158,7 +168,7 @@ router.put('/:id', auth, async (req, res) => {
 
         res.json({
             message: 'Website updated successfully',
-            website: formatWebsite(updatedWebsite)
+            website: formatWebsite(updatedWebsite, req.user.id)
         });
     } catch (error) {
         res.status(500).json({ error: error.message });

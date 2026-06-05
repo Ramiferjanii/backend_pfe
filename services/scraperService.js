@@ -121,12 +121,31 @@ async function scrapeWebsiteTask(websiteId, mode = 'auto', url, filters = {}, us
 
                 console.log(`[SCRAPER] ${websiteId}: Found ${items.length} items to save.`);
 
-                // 2. Update Website Document using Prisma (Success)
+                // 2. Update Website Document using Prisma (Success) - scoped by userId
                 const now = new Date();
+                const currentWebsite = await prisma.website.findUnique({
+                    where: { id: websiteId },
+                    select: { scrapedData: true }
+                });
+
+                let updatedScrapedData = currentWebsite?.scrapedData || {};
+                
+                // If it is already a flat legacy scrape result, reset to map
+                if (updatedScrapedData.type) {
+                    updatedScrapedData = {};
+                }
+
+                if (userId) {
+                    updatedScrapedData[userId] = {
+                        data: data,
+                        lastScraped: now
+                    };
+                }
+
                 await prisma.website.update({
                     where: { id: websiteId },
                     data: {
-                        scrapedData: data,
+                        scrapedData: updatedScrapedData,
                         lastScraped: now
                     }
                 });
